@@ -3,7 +3,6 @@ package chaperone
 import (
 	"context"
 	"fmt"
-	"sync"
 	"testing"
 	"time"
 
@@ -95,8 +94,6 @@ func TestNode_MessageProcessing(t *testing.T) {
 
 	ctx := context.Background()
 
-	var wg sync.WaitGroup
-
 	inputChan := make(Channel[*Envelope[TestItem], TestItem])
 	outputChan := make(Channel[*Envelope[TestItem], TestItem])
 
@@ -115,7 +112,7 @@ func TestNode_MessageProcessing(t *testing.T) {
 		assert.Fail(t, "timeout waiting for message to be processed")
 	}
 
-	wg.Wait() // Ensure all workers finish
+	node.Stop(ctx)
 }
 
 func TestNode_RetryLimit(t *testing.T) {
@@ -126,8 +123,6 @@ func TestNode_RetryLimit(t *testing.T) {
 	node.workerPool[0] = worker
 
 	ctx := context.Background()
-
-	var wg sync.WaitGroup
 
 	inputChan := make(Channel[*Envelope[TestItem], TestItem])
 
@@ -146,7 +141,7 @@ func TestNode_RetryLimit(t *testing.T) {
 		assert.Fail(t, "timeout waiting for message to reach devnull")
 	}
 
-	wg.Wait() // Ensure all workers finish
+	node.Stop(ctx)
 }
 
 func TestNode_HandleWorkerError(t *testing.T) {
@@ -177,4 +172,6 @@ func TestNode_HandleWorkerError(t *testing.T) {
 
 	assert.Equal(t, 0, node.errorCount[0], "expected error count to be reset")
 	assert.True(t, node.shortCircuit[0], "expected input to be short-circuited")
+
+	node.Stop(ctx)
 }
