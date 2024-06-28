@@ -2,105 +2,49 @@ package chaperone
 
 import (
 	"context"
-	"fmt"
-	"sync"
+	"errors"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 )
 
-type SupervisorTestMessage struct {
-	Data    string
-	Payload int
+type supervisorTestMessage struct {
+	Content string
 }
 
-type SupervisorTestWorker struct {
-	id        int
-	started   bool
-	stopped   bool
-	name      string
-	status    string
-	handleErr error
-}
+type supervisorTestHandler struct{}
 
-func (w *SupervisorTestWorker) Handle(ctx context.Context, msg *Envelope[SupervisorTestMessage]) (*Envelope[SupervisorTestMessage], Channel[*Envelope[SupervisorTestMessage], SupervisorTestMessage], error) {
-	if w.handleErr != nil && msg.Item().Payload == -1 {
-		return msg, nil, w.handleErr
+func (h *supervisorTestHandler) Handle(msg *supervisorTestMessage) (string, error) {
+	if msg.Content == "error" {
+		return "", errors.New("test error")
 	}
-	newData := msg.Item().Data + "_handled"
-	msg.SetItem(SupervisorTestMessage{Data: newData, Payload: msg.Item().Payload})
-	return msg, nil, nil
+	return "outChannel", nil
 }
 
-func (w *SupervisorTestWorker) Start(ctx context.Context) {
-	w.started = true
-	w.status = "Running"
+func TestNewSupervisor(t *testing.T) {
+	t.Run("creates a new supervisor with the given name", func(t *testing.T) {
+		name := "TestSupervisor"
+		supervisor := NewSupervisor[supervisorTestMessage](name)
+
+		assert.NotNil(t, supervisor)
+		assert.Equal(t, name, supervisor.Name)
+		assert.NotNil(t, supervisor.Nodes)
+		assert.NotNil(t, supervisor.events)
+	})
 }
 
-func (w *SupervisorTestWorker) Stop() {
-	w.stopped = true
-	w.status = "Idle"
-}
+func TestSupervisor_AddNode(t *testing.T) {
+	t.Run("adds a node to the supervisor", func(t *testing.T) {
+		supervisor := NewSupervisor[supervisorTestMessage]("TestSupervisor")
+		assert.NotNil(t, supervisor.Nodes)
 
-func (w *SupervisorTestWorker) Name() string {
-	return w.name
-}
+		ctx, cancel := context.WithCancelCause(context.Background())
+		handler := &supervisorTestHandler{}
+		node := newNode(ctx, cancel, "TestNode", handler, 3)
 
-func (w *SupervisorTestWorker) Status() string {
-	return w.status
-}
+		supervisor.AddNode(node)
 
-type SupervisorTestWorkerFactory struct{}
-
-func (f *SupervisorTestWorkerFactory) CreateWorker(id int) WorkerInterface[*Envelope[SupervisorTestMessage], SupervisorTestMessage] {
-	return &SupervisorTestWorker{
-		id:     id,
-		name:   fmt.Sprintf("Worker%d", id),
-		status: "Idle",
-	}
-}
-
-func TestSupervisorHandling(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	factory := &SupervisorTestWorkerFactory{}
-	node := NewNode[*Envelope[SupervisorTestMessage], SupervisorTestMessage]("testNode", "Test Node", 1, 3, factory)
-	errorBucket := make(Channel[*Envelope[SupervisorTestMessage], SupervisorTestMessage], 10)
-	supervisor := NewSupervisor[*Envelope[SupervisorTestMessage], SupervisorTestMessage]("testSupervisor", &node, nil, errorBucket, 3)
-
-	input := make(Channel[*Envelope[SupervisorTestMessage], SupervisorTestMessage], 10)
-	output := make(Channel[*Envelope[SupervisorTestMessage], SupervisorTestMessage], 10)
-	devnull := NewDevNullChannel[*Envelope[SupervisorTestMessage], SupervisorTestMessage](ctx)
-
-	node.InputChans[0] = input
-	node.OutputChans[0] = output
-	node.OutputChans[DEVNULL] = devnull
-
-	var wg sync.WaitGroup
-	supervisor.Start(ctx)
-
-	// Test valid message processing
-	input <- NewEnvelope(SupervisorTestMessage{Payload: 42}, 3)
-
-	select {
-	case msg := <-output:
-		assert.Equal(t, 42, msg.Item().Payload)
-	case <-time.After(100 * time.Millisecond):
-		assert.Fail(t, "Message not processed in time")
-	}
-
-	// Test error message processing with retries
-	input <- NewEnvelope(SupervisorTestMessage{Payload: -1}, 3)
-
-	select {
-	case msg := <-devnull:
-		assert.Equal(t, -1, msg.Item().Payload)
-	case <-time.After(100 * time.Millisecond):
-		assert.Fail(t, "Error message not processed in time")
-	}
-
-	cancel()
-	wg.Wait()
+		assert.Contains(t, supervisor.Nodes, "TestNode")
+		assert.Equal(t, supervisor.events, node.eventChan)
+	})
 }

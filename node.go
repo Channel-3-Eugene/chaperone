@@ -4,194 +4,157 @@ import (
 	"context"
 	"fmt"
 	"runtime"
-	"sync"
+	"sync/atomic"
 )
 
-type Node[E *Envelope[I], I any] struct {
-	ID         string
-	Name       string
-	Factory    WorkerFactoryInterface[E, I]
-	RetryLimit int
-
-	InputChans  map[int]Channel[E, I]
-	OutputChans map[int]Channel[E, I]
-
-	workerPool   map[int]WorkerInterface[E, I]
-	errorCount   map[int]int
-	shortCircuit map[int]bool
-
-	eventChan chan *Error[E, I]
-
-	wg     *sync.WaitGroup
-	cancel context.CancelFunc
-}
-
-func NewNode[E *Envelope[I], I any](id, name string, workerCount, retryLimit int, factory WorkerFactoryInterface[E, I]) Node[E, I] {
-	node := Node[E, I]{
-		ID:         id,
-		Name:       name,
-		Factory:    factory,
-		RetryLimit: retryLimit,
-
-		workerPool:   make(map[int]WorkerInterface[E, I]),
-		errorCount:   make(map[int]int),
-		shortCircuit: make(map[int]bool),
-
-		InputChans:  make(map[int]Channel[E, I]),
-		OutputChans: make(map[int]Channel[E, I]),
-
-		eventChan: nil, // Supervisor can attach to this
-
-		wg: &sync.WaitGroup{},
+func newNode[T Message](ctx context.Context, cancel context.CancelCauseFunc, name string, handler Handler[T], retryLimit int) *Node[T] {
+	node := Node[T]{
+		ctx:         ctx,
+		cancel:      cancel,
+		Name:        name,
+		handler:     handler,
+		retryLimit:  retryLimit,
+		workerPool:  []Worker[T]{},
+		inputChans:  make(map[string]chan *Envelope[T]),
+		outputChans: make(map[string]OutMux[T]),
+		devNull:     NewChannel[T](10, true),
+		eventChan:   nil, // Supervisor can attach to this
 	}
 
-	for i := range workerCount {
-		worker := factory.CreateWorker(i)
-		node.workerPool[i] = worker
+	return &node
+}
+
+func (n *Node[T]) AddWorkers(num int, name string, handler Handler[T]) {
+	c, cancel := context.WithCancelCause(n.ctx)
+	for i := 0; i < num; i++ {
+		numWorker := atomic.AddUint64(&n.workerCounter, 1)
+		n.workerPool = append(n.workerPool, Worker[T]{
+			name:    fmt.Sprintf("%s-%d", name, numWorker),
+			handler: handler,
+			ctx:     c,
+			cancel:  cancel,
+		})
 	}
-
-	return node
 }
 
-func (n *Node[E, I]) AddInputChannel(id int) {
-	inCh := make(Channel[E, I])
-	n.InputChans[id] = inCh
+func (n *Node[T]) AddInputChannel(name string, ch chan *Envelope[T]) {
+	n.inputChans[name] = ch
 }
 
-func (n *Node[E, I]) RemoveInputChannel(id int) {
-	delete(n.InputChans, id)
-}
-
-func (n *Node[E, I]) AddOutputChannel(id int) {
-	outCh := make(Channel[E, I])
-	n.OutputChans[id] = outCh
-}
-
-func (n *Node[E, I]) RemoveOutputChannel(id int) {
-	delete(n.OutputChans, id)
-}
-
-func (n *Node[E, I]) SetEventChan(evCh chan *Error[E, I]) {
-	n.eventChan = evCh
-}
-
-func (n *Node[E, I]) Start(ctx context.Context) {
-	ctx, cancel := context.WithCancel(ctx)
-	n.cancel = cancel
-
-	for _, w := range n.workerPool {
-		w.Start(ctx)
-		n.wg.Add(1)
-		go n.startWorker(ctx, n.wg, w)
+func (n *Node[T]) AddOutputChannel(name string, ch chan *Envelope[T]) {
+	mux, ok := n.outputChans[name]
+	if !ok {
+		n.outputChans[name] = OutMux[T]{outChans: []chan *Envelope[T]{ch}}
+		return
 	}
-
+	mux.outChans = append(mux.outChans, ch)
 }
 
-func (n *Node[E, I]) Stop(ctx context.Context) {
-	for _, w := range n.workerPool {
-		w.Stop()
+func (n *Node[T]) Start() {
+	fmt.Printf("Starting node %s\n", n.Name)
+	for _, worker := range n.workerPool {
+		fmt.Printf("Starting worker %s\n", worker.name)
+		go n.startWorker(worker)
 	}
-	n.cancel()
 }
 
-func (n *Node[E, I]) startWorker(ctx context.Context, wg *sync.WaitGroup, w WorkerInterface[E, I]) {
-	defer wg.Done()
-
+func (n *Node[T]) startWorker(w Worker[T]) {
 	defer func() {
 		if r := recover(); r != nil {
 			switch x := r.(type) {
-			case *Envelope[I]:
-				err := NewError(ErrorLevelCritical, fmt.Errorf("worker %s panicked", w.Name()), w, x)
-				n.handleWorkerError(ctx, err)
+			case *Envelope[T]:
+				err := NewEvent(ErrorLevelCritical, fmt.Errorf("worker %s panicked", w.name), x.message)
+				n.handleWorkerEvent(&w, &err, x)
 			case runtime.Error:
-				err := NewError(ErrorLevelCritical, fmt.Errorf("worker %s panicked: %#v", w.Name(), x), w, nil)
-				n.handleWorkerError(ctx, err)
+				err := NewEvent[T](ErrorLevelCritical, fmt.Errorf("worker %s panicked: %#v", w.name, x), nil)
+				n.handleWorkerEvent(&w, &err, nil)
 			default:
-				err := NewError(ErrorLevelCritical, fmt.Errorf("worker %s panicked: %#v", w.Name(), x), w, nil)
-				n.handleWorkerError(ctx, err)
+				err := NewEvent[T](ErrorLevelCritical, fmt.Errorf("worker %s panicked: %#v", w.name, x), nil)
+				n.handleWorkerEvent(&w, &err, nil)
 			}
 		}
 	}()
 
 	for {
 		select {
-		case <-ctx.Done():
+		case <-w.ctx.Done():
+			fmt.Printf("Worker %s context done\n", w.name)
 			return
 		default:
-			for _, inputChan := range n.InputChans {
+			for name, ch := range n.inputChans {
 				select {
-				case msg, ok := <-inputChan:
+				case env, ok := <-ch:
 					if !ok {
-						return // channels getting shut down means a hard stop
+						fmt.Printf("Channel %s closed for worker %s\n", name, w.name)
+						return // Channel closed
 					}
 
-					// msg.DecrementRetry()
+					fmt.Printf("Worker %s received message on input channel %s: %v\n", w.name, name, env.message)
+					env.inChan = ch
+					outChName, ev := w.handler.Handle(env.message)
+					fmt.Printf("Worker %s sending message to %s, event %#v\n", w.name, outChName, ev)
 
-					newMsg, outCh, err := w.Handle(ctx, msg)
-
-					if err != nil {
-						newErr := NewError(ErrorLevelError, err, w, msg)
-						n.handleWorkerError(ctx, newErr)
-					} else if outCh != nil {
-						n.Send(newMsg, outCh)
+					if ev != nil {
+						newErr := NewEvent(ErrorLevelError, ev, env.message)
+						n.handleWorkerEvent(&w, &newErr, env)
+					} else if mux, ok := n.outputChans[outChName]; ok {
+						fmt.Printf("Worker %s sending message to output channel %s\n", w.name, outChName)
+						n.Send(env, mux)
 					} else {
-						if devnull, exists := n.OutputChans[DEVNULL]; exists {
-							devnull <- newMsg
-						}
+						newErr := NewEvent(ErrorLevelError, fmt.Errorf("non-existent output %s", outChName), env.message)
+						n.handleWorkerEvent(&w, &newErr, env)
+						n.devNull <- env
 					}
+				default:
+					// No message to read, continue to next channel
+					continue
 				}
 			}
 		}
 	}
 }
 
-func (n *Node[E, I]) handleWorkerError(ctx context.Context, err *Error[E, I]) {
-	// msg := err.Message
-	// n.errorCount[msg.inputChan]++
-	// if n.errorCount[msg.inputChan] >= n.RetryLimit {
-	// 	n.shortCircuit[msg.inputChan] = true
-	// 	n.errorCount[msg.inputChan] = 0
-	// 	n.SendToSupervisor(ctx, err)
-	// 	return
-	// }
-
-	// msg.DecrementRetry()
-	// if msg.retryCount > 0 {
-	// 	n.Retry(ctx, msg, msg.inputChan)
-	// } else if devnull, exists := n.OutputChans[DEVNULL]; exists {
-	// 	n.Send(msg, devnull)
-	// }
+func (n *Node[T]) Stop() {
+	n.cancel(NewEvent[T](ErrorLevelInfo, fmt.Errorf("stopping node %s", n.Name), nil))
 }
 
-func (n *Node[E, I]) Send(msg *Envelope[I], toChan Channel[E, I]) {
-	if toChan != nil {
-		toChan.Send(msg)
+func (n *Node[T]) Send(env *Envelope[T], mux OutMux[T]) {
+	for _, ch := range mux.outChans {
+		fmt.Printf("Sending message %v to output channel %#v\n", env.message, ch)
+		select {
+		case ch <- env:
+			fmt.Printf("Message send to %#v, len %d, Cap: %d\n", ch, len(ch), cap(ch))
+		default:
+			fmt.Printf("Channel %#v is full, message dropped\n", ch)
+		}
+	}
+}
+
+func (n *Node[T]) handleWorkerEvent(w *Worker[T], ev *Event[T], env *Envelope[T]) {
+	env.numRetries--
+	if env.numRetries > 0 {
+		select {
+		case env.inChan <- env:
+			fmt.Printf("Retrying message %v\n", env.message)
+		default:
+			fmt.Printf("Retry channel full for message %v\n", env.message)
+		}
 	} else {
-		if devnull, exists := n.OutputChans[DEVNULL]; exists {
-			devnull <- msg
+		select {
+		case n.devNull <- env:
+			fmt.Printf("Discarding message %v to devNull\n", env.message)
+		default:
+			fmt.Printf("devNull channel full for message %v\n", env.message)
 		}
 	}
-}
 
-func (n *Node[E, I]) Retry(ctx context.Context, msg *Envelope[I], inChan Channel[E, I]) {
-	if msg.RetryCount() < 1 {
-		if devnull, exists := n.OutputChans[DEVNULL]; exists {
-			devnull <- msg
+	if ev.Level >= ErrorLevelError {
+		select {
+		case n.eventChan <- ev:
+			fmt.Printf("Event sent: %v\n", ev)
+		default:
+			fmt.Printf("Event channel full, event dropped: %v\n", ev)
 		}
-		return
-	}
-	msg.DecrementRetry()
-	if inChan != nil {
-		n.Send(msg, inChan)
-	} else {
-		if devnull, exists := n.OutputChans[DEVNULL]; exists {
-			devnull <- msg
-		}
-	}
-}
-
-func (n *Node[E, I]) SendToSupervisor(ctx context.Context, ev *Error[E, I]) {
-	if n.eventChan != nil {
-		n.eventChan <- ev
+		w.cancel(ev)
 	}
 }

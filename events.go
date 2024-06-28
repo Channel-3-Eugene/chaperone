@@ -24,46 +24,33 @@ const (
 
 const DefaultErrorLevel = ErrorLevelInfo
 
-// Error wraps a standard error with additional context like error level and input item.
-type Error[E *Envelope[I], I any] struct {
-	Level   ErrorLevel
-	Err     error
-	Message *Envelope[I]
-	Worker  WorkerInterface[E, I]
-}
-
-// NewError creates a new Error.
-func NewError[E *Envelope[I], I any](level ErrorLevel, err error, worker WorkerInterface[E, I], message *Envelope[I]) *Error[E, I] {
+func NewEvent[T Message](level ErrorLevel, err error, msg *T) Event[T] {
 	if level == ErrorLevelDefault {
 		level = DefaultErrorLevel
 	}
 
-	return &Error[E, I]{
+	return Event[T]{
 		Level:   level,
-		Err:     err,
-		Message: message,
-		Worker:  worker,
+		Event:   err,
+		Message: msg,
 	}
 }
 
 // Error implements the error interface.
-func (e *Error[E, I]) Error() string {
-	if e == nil {
-		return "<nil>"
+func (e Event[T]) Error() string {
+	if e.Event != nil {
+		return fmt.Sprintf("[%s] %#v: %v", e.Level.Level(), e.Message, e.Event)
 	}
-	if e.Err != nil {
-		return fmt.Sprintf("[%s] %#v: %v", e.Level.String(), e.Message, e.Err)
-	}
-	return fmt.Sprintf("[%s] %#v", e.Level.String(), e.Message)
+	return fmt.Sprintf("[%s] %#v", e.Level.Level(), e.Message)
 }
 
 // Unwrap returns the underlying error.
-func (e *Error[E, I]) Unwrap() error {
-	return e.Err
+func (e *Event[T]) Unwrap() error {
+	return e.Event
 }
 
 // String returns the string representation of the error level.
-func (level ErrorLevel) String() string {
+func (level ErrorLevel) Level() string {
 	switch level {
 	case ErrorLevelDebug:
 		return "DEBUG"
