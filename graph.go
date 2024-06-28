@@ -27,7 +27,7 @@ func (g *Graph[T]) AddNode(supervisor *Supervisor[T], name string, handler Handl
 }
 
 func (g *Graph[T]) AddEdge(fromNodeName, outchan, toNodeName, inchan string, bufferSize int) {
-	channel := NewChannel[T](bufferSize, true)
+	channel := NewChannel[T](bufferSize, false)
 	g.Nodes[fromNodeName].AddOutputChannel(outchan, channel)
 	g.Nodes[toNodeName].AddInputChannel(inchan, channel)
 	g.Edges = append(g.Edges, &Edge[T]{Source: fromNodeName + ":" + outchan, Destination: toNodeName + ":" + inchan, Channel: channel})

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	"fmt"
 	"math/big"
 	"testing"
 	"time"
@@ -22,7 +21,6 @@ func (h *testHandler) Handle(msg *testMessage) (string, error) {
 	if msg.Content == "error" {
 		return "", NewEvent[testMessage](ErrorLevelError, errors.New("test error"), nil)
 	}
-	fmt.Printf("handling msg: %#v\n", msg)
 	return "outChannel", nil
 }
 
@@ -55,24 +53,18 @@ func TestEndToEnd(t *testing.T) {
 
 	nodeName1 := "Node1"
 	// graph.AddNode(supervisor, nodeName1, handler, retryLimit)
-	graph.AddNode(nil, nodeName1, handler, retryLimit)
+	graph.AddNode(supervisor, nodeName1, handler, retryLimit)
 	node1 := graph.Nodes[nodeName1]
 
 	nodeName2 := "Node2"
-	graph.AddNode(nil, nodeName2, handler, retryLimit)
+	graph.AddNode(supervisor, nodeName2, handler, retryLimit)
 	node2 := graph.Nodes[nodeName2]
 
 	// Step 4: Set up input and output channels for the nodes
 	inCh1 := NewChannel[testMessage](10, false)
 	node1.inputChans["input"] = inCh1
 
-	graph.AddEdge(nodeName1, "outChannel", nodeName2, "input", 10)
-	for _, edge := range graph.Edges {
-		fmt.Printf("Edge: %#v\n", edge)
-	}
-
-	fmt.Printf("node1 output: %#v\n", node1.outputChans["outChannel"].outChans[0])
-	fmt.Printf("node2 input:  %#v\n", node2.inputChans["input"])
+	graph.AddEdge(nodeName1, "outChannel", nodeName2, "inChannel", 10)
 
 	outCh2 := NewChannel[testMessage](10, false)
 	node2.outputChans["outChannel"] = OutMux[testMessage]{outChans: []chan *Envelope[testMessage]{outCh2}}
@@ -95,7 +87,7 @@ func TestEndToEnd(t *testing.T) {
 	select {
 	case received := <-outCh2:
 		assert.Equal(t, msg, received.message, "Expected to receive the same message in node2 input channel")
-	default:
+	case <-time.After(1 * time.Millisecond):
 		t.Error("Expected message in node2 output channel")
 	}
 
