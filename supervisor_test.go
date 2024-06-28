@@ -21,7 +21,7 @@ func (h *supervisorTestHandler) Handle(msg *supervisorTestMessage) (string, erro
 	return "outChannel", nil
 }
 
-func TestNewSupervisor(t *testing.T) {
+func TestSupervisor_NewSupervisor(t *testing.T) {
 	t.Run("creates a new supervisor with the given name", func(t *testing.T) {
 		name := "TestSupervisor"
 		supervisor := NewSupervisor[supervisorTestMessage](name)

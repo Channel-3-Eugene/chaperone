@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNewEnvelope(t *testing.T) {
+func TestEnvelope_NewEnvelope(t *testing.T) {
 	msg := "Test message"
 	numRetries := 3
 

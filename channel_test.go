@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNewChannel(t *testing.T) {
+func TestChannel_NewChannel(t *testing.T) {
 	ch := NewChannel[string](10, false)
 	assert.NotNil(t, ch, "Channel should not be nil")
 
@@ -22,7 +22,7 @@ func TestNewChannel(t *testing.T) {
 	close(ch)
 }
 
-func TestNewChannelDevNull(t *testing.T) {
+func TestChannel_NewDevNull(t *testing.T) {
 	ch := NewChannel[string](10, true)
 	assert.NotNil(t, ch, "Channel should not be nil")
 

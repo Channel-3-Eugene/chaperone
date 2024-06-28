@@ -37,7 +37,7 @@ func randomString(n int) (string, error) {
 	return string(b), nil
 }
 
-func TestEndToEnd(t *testing.T) {
+func TestChaperone_EndToEnd(t *testing.T) {
 	// Create the graph
 	ctx := context.Background()
 

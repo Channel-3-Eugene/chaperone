@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNewEvent(t *testing.T) {
+func TestEvents_NewEvent(t *testing.T) {
 	msg := "Test message"
 	err := errors.New("Test error")
 
@@ -32,7 +32,7 @@ func TestNewEvent(t *testing.T) {
 	}
 }
 
-func TestEvent_Error(t *testing.T) {
+func TestEvents_Error(t *testing.T) {
 	msg := "Test message"
 	err := errors.New("Test error")
 	event := NewEvent(ErrorLevelError, err, &msg)
@@ -45,7 +45,7 @@ func TestEvent_Error(t *testing.T) {
 	assert.Equal(t, expectedNoError, eventNoError.Error(), "Expected error string to match when no error is present")
 }
 
-func TestEvent_Unwrap(t *testing.T) {
+func TestEvents_Unwrap(t *testing.T) {
 	msg := "Test message"
 	err := errors.New("Test error")
 	event := NewEvent(ErrorLevelError, err, &msg)
@@ -54,7 +54,7 @@ func TestEvent_Unwrap(t *testing.T) {
 	assert.Equal(t, err, unwrapped, "Expected unwrapped error to match")
 }
 
-func TestErrorLevel_Level(t *testing.T) {
+func TestEvents_ErrorLevels(t *testing.T) {
 	tests := []struct {
 		level    ErrorLevel
 		expected string

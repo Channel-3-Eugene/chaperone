@@ -21,7 +21,7 @@ func (h *graphTestHandler) Handle(msg *graphTestMessage) (string, error) {
 	return "outChannel", nil
 }
 
-func TestNewGraph(t *testing.T) {
+func TestGraph_NewGraph(t *testing.T) {
 	t.Run("creates a new graph with the given context", func(t *testing.T) {
 		ctx := context.Background()
 		graph := NewGraph[graphTestMessage](ctx)
@@ -95,14 +95,6 @@ func TestGraph_AddEdge(t *testing.T) {
 
 		// Verify the buffer size
 		assert.Equal(t, 10, cap(outChannel))
-
-		// Verify the channel accepts and delivers messages
-		// select {
-		// case receivedEnvelope := <-inChannel:
-		// 	assert.Equal(t, envelope, receivedEnvelope)
-		// default:
-		// 	t.Errorf("Expected to receive message on input channel")
-		// }
 	})
 }
 
