@@ -59,7 +59,7 @@ func TestGraph_AddNode(t *testing.T) {
 		nodeName := "TestNode"
 		handler := &graphTestHandler{}
 		retryLimit := 3
-		graph.AddNode(supervisor, nodeName, handler, retryLimit)
+		graph.AddNode(supervisorName, nodeName, handler, retryLimit)
 
 		assert.Contains(t, graph.Nodes, nodeName)
 		assert.Equal(t, nodeName, graph.Nodes[nodeName].Name)
@@ -73,22 +73,19 @@ func TestGraph_AddNode(t *testing.T) {
 func TestGraph_AddEdge(t *testing.T) {
 	t.Run("adds an edge between two nodes", func(t *testing.T) {
 		ctx := context.Background()
-		graph := NewGraph[graphTestMessage](ctx)
 
 		supervisorName := "TestSupervisor"
-		graph.AddSupervisor(supervisorName)
-		supervisor := graph.Supervisors[supervisorName]
+		nodeName1 := "Node1"
+		nodeName2 := "Node2"
 
 		handler := &graphTestHandler{}
 		retryLimit := 3
 
-		nodeName1 := "Node1"
-		nodeName2 := "Node2"
-
-		graph.AddNode(supervisor, nodeName1, handler, retryLimit)
-		graph.AddNode(supervisor, nodeName2, handler, retryLimit)
-
-		graph.AddEdge(nodeName1, "outChannel", nodeName2, "input", 10)
+		graph := NewGraph[graphTestMessage](ctx).
+			AddSupervisor(supervisorName).
+			AddNode(supervisorName, nodeName1, handler, retryLimit).
+			AddNode(supervisorName, nodeName2, handler, retryLimit).
+			AddEdge(nodeName1, "outChannel", nodeName2, "input", 10)
 
 		// Verify channels are set up correctly
 		assert.Contains(t, graph.Nodes[nodeName1].outputChans, "outChannel")
@@ -135,27 +132,22 @@ func TestGraph_SimpleChannel(t *testing.T) {
 func TestGraph_Start(t *testing.T) {
 	t.Run("starts all nodes in the graph", func(t *testing.T) {
 		ctx := context.Background()
-		graph := NewGraph[graphTestMessage](ctx)
-
-		supervisorName := "TestSupervisor"
-		graph.AddSupervisor(supervisorName)
-		supervisor := graph.Supervisors[supervisorName]
-
 		handler := &graphTestHandler{}
 		retryLimit := 3
 
+		supervisorName := "TestSupervisor"
 		nodeName1 := "Node1"
 		nodeName2 := "Node2"
 
-		graph.AddNode(supervisor, nodeName1, handler, retryLimit)
-		graph.AddNode(supervisor, nodeName2, handler, retryLimit)
-
-		graph.AddEdge(nodeName1, "outChannel", nodeName2, "input", 10)
+		graph := NewGraph[graphTestMessage](ctx).
+			AddSupervisor(supervisorName).
+			AddNode(supervisorName, nodeName1, handler, retryLimit).
+			AddNode(supervisorName, nodeName2, handler, retryLimit).
+			AddEdge(nodeName1, "outChannel", nodeName2, "input", 10)
 
 		// Start the graph
 		graph.Start()
 
-		// Here, you would typically have assertions that verify the nodes are running.
 		// Since our nodes don't have a "running" state, we'll assume Start works if no panics occur.
 		assert.NotPanics(t, func() {
 			graph.Start()
