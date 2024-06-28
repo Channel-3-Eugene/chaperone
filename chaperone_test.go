@@ -42,16 +42,15 @@ func TestEndToEnd(t *testing.T) {
 	ctx := context.Background()
 
 	handler := &testHandler{}
-	RetryLimit := 3
 	SupervisorName := "supervisor1"
 	Node1Name := "node1"
 	Node2Name := "node2"
 
 	graph := NewGraph[testMessage](ctx).
 		AddSupervisor(SupervisorName).
-		AddNode(SupervisorName, Node1Name, handler, RetryLimit).
+		AddNode(SupervisorName, Node1Name, handler).
 		AddWorkers(Node1Name, 1, "worker1", handler).
-		AddNode(SupervisorName, Node2Name, handler, RetryLimit).
+		AddNode(SupervisorName, Node2Name, handler).
 		AddWorkers(Node2Name, 1, "worker2", handler).
 		AddEdge("", "", Node1Name, "input", 10).
 		AddEdge(Node1Name, "outChannel", Node2Name, "input", 10).

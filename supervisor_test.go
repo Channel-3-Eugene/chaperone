@@ -40,7 +40,7 @@ func TestSupervisor_AddNode(t *testing.T) {
 
 		ctx, cancel := context.WithCancelCause(context.Background())
 		handler := &supervisorTestHandler{}
-		node := newNode(ctx, cancel, "TestNode", handler, 3)
+		node := newNode(ctx, cancel, "TestNode", handler)
 
 		supervisor.AddNode(node)
 

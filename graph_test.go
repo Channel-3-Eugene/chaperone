@@ -58,13 +58,11 @@ func TestGraph_AddNode(t *testing.T) {
 
 		nodeName := "TestNode"
 		handler := &graphTestHandler{}
-		retryLimit := 3
-		graph.AddNode(supervisorName, nodeName, handler, retryLimit)
+		graph.AddNode(supervisorName, nodeName, handler)
 
 		assert.Contains(t, graph.Nodes, nodeName)
 		assert.Equal(t, nodeName, graph.Nodes[nodeName].Name)
 		assert.Equal(t, handler, graph.Nodes[nodeName].handler)
-		assert.Equal(t, retryLimit, graph.Nodes[nodeName].retryLimit)
 		assert.Contains(t, supervisor.Nodes, nodeName)
 		assert.Equal(t, graph.Nodes[nodeName], supervisor.Nodes[nodeName])
 	})
@@ -79,12 +77,11 @@ func TestGraph_AddEdge(t *testing.T) {
 		nodeName2 := "Node2"
 
 		handler := &graphTestHandler{}
-		retryLimit := 3
 
 		graph := NewGraph[graphTestMessage](ctx).
 			AddSupervisor(supervisorName).
-			AddNode(supervisorName, nodeName1, handler, retryLimit).
-			AddNode(supervisorName, nodeName2, handler, retryLimit).
+			AddNode(supervisorName, nodeName1, handler).
+			AddNode(supervisorName, nodeName2, handler).
 			AddEdge(nodeName1, "outChannel", nodeName2, "input", 10)
 
 		// Verify channels are set up correctly
@@ -133,7 +130,6 @@ func TestGraph_Start(t *testing.T) {
 	t.Run("starts all nodes in the graph", func(t *testing.T) {
 		ctx := context.Background()
 		handler := &graphTestHandler{}
-		retryLimit := 3
 
 		supervisorName := "TestSupervisor"
 		nodeName1 := "Node1"
@@ -141,8 +137,8 @@ func TestGraph_Start(t *testing.T) {
 
 		graph := NewGraph[graphTestMessage](ctx).
 			AddSupervisor(supervisorName).
-			AddNode(supervisorName, nodeName1, handler, retryLimit).
-			AddNode(supervisorName, nodeName2, handler, retryLimit).
+			AddNode(supervisorName, nodeName1, handler).
+			AddNode(supervisorName, nodeName2, handler).
 			AddEdge(nodeName1, "outChannel", nodeName2, "input", 10)
 
 		// Start the graph

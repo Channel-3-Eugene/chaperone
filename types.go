@@ -45,8 +45,6 @@ type Node[T Message] struct {
 	outputChans map[string]OutMux[T]
 	devNull     chan *Envelope[T]
 	eventChan   chan *Event[T]
-
-	retryLimit int
 }
 
 type Supervisor[T Message] struct {

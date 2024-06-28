@@ -7,13 +7,12 @@ import (
 	"sync/atomic"
 )
 
-func newNode[T Message](ctx context.Context, cancel context.CancelCauseFunc, name string, handler Handler[T], retryLimit int) *Node[T] {
+func newNode[T Message](ctx context.Context, cancel context.CancelCauseFunc, name string, handler Handler[T]) *Node[T] {
 	node := Node[T]{
 		ctx:         ctx,
 		cancel:      cancel,
 		Name:        name,
 		handler:     handler,
-		retryLimit:  retryLimit,
 		workerPool:  []Worker[T]{},
 		inputChans:  make(map[string]chan *Envelope[T]),
 		outputChans: make(map[string]OutMux[T]),

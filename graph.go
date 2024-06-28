@@ -20,9 +20,9 @@ func (g *Graph[T]) AddSupervisor(name string) *Graph[T] {
 	return g
 }
 
-func (g *Graph[T]) AddNode(supervisorName, name string, handler Handler[T], retryLimit int) *Graph[T] {
+func (g *Graph[T]) AddNode(supervisorName, name string, handler Handler[T]) *Graph[T] {
 	c, cancel := context.WithCancelCause(g.ctx)
-	g.Nodes[name] = newNode(c, cancel, name, handler, retryLimit)
+	g.Nodes[name] = newNode(c, cancel, name, handler)
 	if supervisor, ok := g.Supervisors[supervisorName]; ok {
 		supervisor.AddNode(g.Nodes[name])
 	}

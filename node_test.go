@@ -26,12 +26,11 @@ func TestNewNode(t *testing.T) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	handler := &nodeTestHandler{}
 
-	node := newNode(ctx, cancel, "testNode", handler, 3)
+	node := newNode(ctx, cancel, "testNode", handler)
 
 	assert.NotNil(t, node)
 	assert.Equal(t, "testNode", node.Name)
 	assert.Equal(t, handler, node.handler)
-	assert.Equal(t, 3, node.retryLimit)
 	assert.NotNil(t, node.devNull)
 	assert.Nil(t, node.eventChan)
 }
@@ -39,7 +38,7 @@ func TestNewNode(t *testing.T) {
 func TestAddWorkers(t *testing.T) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	handler := &nodeTestHandler{}
-	node := newNode(ctx, cancel, "testNode", handler, 3)
+	node := newNode(ctx, cancel, "testNode", handler)
 
 	node.AddWorkers(2, "worker", handler)
 
@@ -53,7 +52,7 @@ func TestAddWorkers(t *testing.T) {
 func TestStartStopNode(t *testing.T) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	handler := &nodeTestHandler{}
-	node := newNode(ctx, cancel, "testNode", handler, 3)
+	node := newNode(ctx, cancel, "testNode", handler)
 
 	node.AddWorkers(1, "worker", handler)
 	node.Start()
@@ -78,7 +77,7 @@ func TestStartStopNode(t *testing.T) {
 func TestWorkerHandlesMessage(t *testing.T) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	handler := &nodeTestHandler{}
-	node := newNode(ctx, cancel, "testNode", handler, 3)
+	node := newNode(ctx, cancel, "testNode", handler)
 
 	inCh := make(chan *Envelope[nodeTestMessage], 1)
 	node.inputChans["input"] = inCh
@@ -104,7 +103,7 @@ func TestWorkerHandlesMessage(t *testing.T) {
 func TestWorkerHandlesError(t *testing.T) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	handler := &nodeTestHandler{}
-	node := newNode(ctx, cancel, "testNode", handler, 3)
+	node := newNode(ctx, cancel, "testNode", handler)
 
 	inCh := make(chan *Envelope[nodeTestMessage], 1)
 	node.inputChans["input"] = inCh
