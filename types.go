@@ -24,7 +24,9 @@ type Worker[T Message] struct {
 }
 
 type OutMux[T Message] struct {
-	outChans []chan *Envelope[T]
+	Name    string
+	inChans map[string]chan *Envelope[T]
+	goChans map[string]chan *Envelope[T]
 }
 
 type Edge[T Message] struct {
@@ -48,9 +50,10 @@ type Node[T Message] struct {
 }
 
 type Supervisor[T Message] struct {
-	Name   string
-	Nodes  map[string]*Node[T]
-	events chan *Event[T]
+	Name    string
+	Nodes   map[string]*Node[T]
+	events  chan *Event[T]
+	handler Handler[T]
 }
 
 type Event[T Message] struct {

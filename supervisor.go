@@ -1,10 +1,11 @@
 package chaperone
 
-func NewSupervisor[T Message](name string) *Supervisor[T] {
+func NewSupervisor[T Message](name string, handler Handler[T]) *Supervisor[T] {
 	return &Supervisor[T]{
-		Name:   name,
-		Nodes:  make(map[string]*Node[T]),
-		events: make(chan *Event[T], 100),
+		Name:    name,
+		Nodes:   make(map[string]*Node[T]),
+		events:  make(chan *Event[T], 1000),
+		handler: handler,
 	}
 }
 

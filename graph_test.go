@@ -21,6 +21,12 @@ func (h *graphTestHandler) Handle(msg *graphTestMessage) (string, error) {
 	return "outChannel", nil
 }
 
+type graphSupervisorTestHandler struct{}
+
+func (h *graphSupervisorTestHandler) Handle(msg *graphTestMessage) (string, error) {
+	return "supervised", nil
+}
+
 func TestGraph_NewGraph(t *testing.T) {
 	t.Run("creates a new graph with the given context", func(t *testing.T) {
 		ctx := context.Background()
@@ -40,7 +46,7 @@ func TestGraph_AddSupervisor(t *testing.T) {
 		graph := NewGraph[graphTestMessage](ctx)
 
 		supervisorName := "TestSupervisor"
-		graph.AddSupervisor(supervisorName)
+		graph.AddSupervisor(supervisorName, &graphSupervisorTestHandler{})
 
 		assert.Contains(t, graph.Supervisors, supervisorName)
 		assert.Equal(t, supervisorName, graph.Supervisors[supervisorName].Name)
@@ -53,7 +59,7 @@ func TestGraph_AddNode(t *testing.T) {
 		graph := NewGraph[graphTestMessage](ctx)
 
 		supervisorName := "TestSupervisor"
-		graph.AddSupervisor(supervisorName)
+		graph.AddSupervisor(supervisorName, &graphSupervisorTestHandler{})
 		supervisor := graph.Supervisors[supervisorName]
 
 		nodeName := "TestNode"
@@ -75,22 +81,24 @@ func TestGraph_AddEdge(t *testing.T) {
 		supervisorName := "TestSupervisor"
 		nodeName1 := "Node1"
 		nodeName2 := "Node2"
+		inputName := "input"
+		outputName := "outChannel"
 
 		handler := &graphTestHandler{}
 
 		graph := NewGraph[graphTestMessage](ctx).
-			AddSupervisor(supervisorName).
+			AddSupervisor(supervisorName, &graphSupervisorTestHandler{}).
 			AddNode(supervisorName, nodeName1, handler).
 			AddNode(supervisorName, nodeName2, handler).
-			AddEdge(nodeName1, "outChannel", nodeName2, "input", 10)
+			AddEdge(nodeName1, outputName, nodeName2, inputName, 10)
 
 		// Verify channels are set up correctly
-		assert.Contains(t, graph.Nodes[nodeName1].outputChans, "outChannel")
-		assert.Contains(t, graph.Nodes[nodeName2].inputChans, "input")
+		assert.Contains(t, graph.Nodes[nodeName1].outputChans, nodeName1+":"+outputName)
+		assert.Contains(t, graph.Nodes[nodeName2].inputChans, inputName)
 
 		// Verify the same channel is being used
-		outChannel := graph.Nodes[nodeName1].outputChans["outChannel"].outChans[0]
-		inChannel := graph.Nodes[nodeName2].inputChans["input"]
+		outChannel := graph.Nodes[nodeName1].outputChans[nodeName1+":"+outputName].goChans[nodeName2+":"+inputName]
+		inChannel := graph.Nodes[nodeName2].inputChans[inputName]
 		assert.Equal(t, outChannel, inChannel)
 
 		// Verify the buffer size
@@ -128,7 +136,7 @@ func TestGraph_Start(t *testing.T) {
 		nodeName2 := "Node2"
 
 		graph := NewGraph[graphTestMessage](ctx).
-			AddSupervisor(supervisorName).
+			AddSupervisor(supervisorName, &graphSupervisorTestHandler{}).
 			AddNode(supervisorName, nodeName1, handler).
 			AddNode(supervisorName, nodeName2, handler).
 			AddEdge(nodeName1, "outChannel", nodeName2, "input", 10)

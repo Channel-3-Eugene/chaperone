@@ -19,7 +19,7 @@ func (h *nodeTestHandler) Handle(msg *nodeTestMessage) (string, error) {
 	if msg.Content == "error" {
 		return "", errors.New("test error")
 	}
-	return "outChannel", nil
+	return "outMux", nil
 }
 
 func TestNode_NewNode(t *testing.T) {
@@ -40,7 +40,7 @@ func TestNode_AddWorkers(t *testing.T) {
 	handler := &nodeTestHandler{}
 	node := newNode(ctx, cancel, "testNode", handler)
 
-	node.AddWorkers(2, "worker", handler)
+	node.AddWorkers(2, "worker")
 
 	assert.Len(t, node.workerPool, 2)
 	assert.Equal(t, "worker-1", node.workerPool[0].name)
@@ -54,7 +54,7 @@ func TestNode_StartStop(t *testing.T) {
 	handler := &nodeTestHandler{}
 	node := newNode(ctx, cancel, "testNode", handler)
 
-	node.AddWorkers(1, "worker", handler)
+	node.AddWorkers(1, "worker")
 	node.Start()
 
 	// Give some time for the worker to start
@@ -80,11 +80,11 @@ func TestNode_WorkerHandlesMessage(t *testing.T) {
 	node := newNode(ctx, cancel, "testNode", handler)
 
 	inCh := make(chan *Envelope[nodeTestMessage], 1)
-	node.inputChans["input"] = inCh
+	node.AddInputChannel("input", inCh)
 	outCh := make(chan *Envelope[nodeTestMessage], 1)
-	node.outputChans["outChannel"] = OutMux[nodeTestMessage]{outChans: []chan *Envelope[nodeTestMessage]{outCh}}
+	node.AddOutputChannel("outMux", "outChan", outCh)
 
-	node.AddWorkers(1, "worker", handler)
+	node.AddWorkers(1, "worker")
 	node.Start()
 
 	// Send a message to the input channel
@@ -109,7 +109,7 @@ func TestNode_WorkerHandlesError(t *testing.T) {
 	node.inputChans["input"] = inCh
 	node.eventChan = make(chan *Event[nodeTestMessage], 1)
 
-	node.AddWorkers(1, "worker", handler)
+	node.AddWorkers(1, "worker")
 	node.Start()
 
 	// Send a message that will cause an error

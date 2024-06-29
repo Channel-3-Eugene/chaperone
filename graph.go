@@ -2,6 +2,7 @@ package chaperone
 
 import (
 	"context"
+	"sync"
 )
 
 func NewGraph[T Message](ctx context.Context) *Graph[T] {
@@ -11,12 +12,12 @@ func NewGraph[T Message](ctx context.Context) *Graph[T] {
 		cancel:      cancel,
 		Nodes:       make(map[string]*Node[T]),
 		Supervisors: make(map[string]*Supervisor[T]),
-		Edges:       make([]*Edge[T], 0), // Initialize Edges slice
+		Edges:       make([]*Edge[T], 0),
 	}
 }
 
-func (g *Graph[T]) AddSupervisor(name string) *Graph[T] {
-	g.Supervisors[name] = NewSupervisor[T](name)
+func (g *Graph[T]) AddSupervisor(name string, handler Handler[T]) *Graph[T] {
+	g.Supervisors[name] = NewSupervisor[T](name, handler)
 	return g
 }
 
@@ -29,8 +30,8 @@ func (g *Graph[T]) AddNode(supervisorName, name string, handler Handler[T]) *Gra
 	return g
 }
 
-func (g *Graph[T]) AddWorkers(nodeName string, num int, name string, handler Handler[T]) *Graph[T] {
-	g.Nodes[nodeName].AddWorkers(num, name, handler)
+func (g *Graph[T]) AddWorkers(nodeName string, num int, name string) *Graph[T] {
+	g.Nodes[nodeName].AddWorkers(num, name)
 	return g
 }
 
@@ -40,7 +41,9 @@ func (g *Graph[T]) AddEdge(fromNodeName, outchan, toNodeName, inchan string, buf
 	if fromNodeName != "" && outchan != "" {
 		if _, ok := g.Nodes[fromNodeName]; ok {
 			nodecount++
-			g.Nodes[fromNodeName].AddOutputChannel(outchan, channel)
+			muxName := fromNodeName + ":" + outchan
+			channelName := toNodeName + ":" + inchan
+			g.Nodes[fromNodeName].AddOutputChannel(muxName, channelName, channel)
 		}
 	}
 	if toNodeName != "" && inchan != "" {
@@ -57,9 +60,15 @@ func (g *Graph[T]) AddEdge(fromNodeName, outchan, toNodeName, inchan string, buf
 }
 
 func (g *Graph[T]) Start() *Graph[T] {
+	var wg sync.WaitGroup
 	for _, node := range g.Nodes {
-		node.Start()
+		wg.Add(1)
+		go func(n *Node[T]) {
+			defer wg.Done()
+			n.Start()
+		}(node)
 	}
+	wg.Wait() // Ensure all nodes are started
 	return g
 }
 
