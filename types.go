@@ -23,16 +23,16 @@ type Worker[T Message] struct {
 	handler Handler[T]
 }
 
-type OutMux[T Message] struct {
-	Name    string
-	inChans map[string]chan *Envelope[T]
-	goChans map[string]chan *Envelope[T]
-}
-
 type Edge[T Message] struct {
 	Source      string
 	Destination string
 	Channel     chan *Envelope[T]
+}
+
+type OutMux[T Message] struct {
+	Name    string
+	inChans map[string]chan *Envelope[T]
+	goChans map[string]chan *Envelope[T]
 }
 
 type Node[T Message] struct {
