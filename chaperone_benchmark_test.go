@@ -86,11 +86,11 @@ func startCPUProfiling() func() {
 }
 
 func BenchmarkGraph(b *testing.B) {
-	stopCPUProfiling := startCPUProfiling()
-	defer stopCPUProfiling()
+	// stopCPUProfiling := startCPUProfiling()
+	// defer stopCPUProfiling()
 
-	stopMemoryProfiling := startMemoryProfiling()
-	defer stopMemoryProfiling()
+	// stopMemoryProfiling := startMemoryProfiling()
+	// defer stopMemoryProfiling()
 
 	ctx := context.Background()
 
@@ -105,10 +105,11 @@ func BenchmarkGraph(b *testing.B) {
 	Node4WorkerName := "worker4"
 	Node5Name := "node5"
 	Node5WorkerName := "worker5"
-	BufferSize := 1_000_000
+	BufferSize := 100_000_000
 	inputChannelName := "input"
 	outputChannelName := "outChannel"
-	numberWorkers := 8
+	numberWorkers := 2
+	totalMessages := 5_965_232
 
 	graph := NewGraph[benchmarkMessage](ctx).
 		AddSupervisor(SupervisorName, &benchmarkSupervisorHandler{}).
@@ -133,49 +134,49 @@ func BenchmarkGraph(b *testing.B) {
 	fmt.Println("Graph started")
 	fmt.Printf("Number of nodes: %d\n", len(graph.Nodes))
 
-	// Run the benchmark
-	b.ResetTimer()
-	sendCount := 0
-	startTime := time.Now()
+	for range 10 {
+		// Run the benchmark
+		b.ResetTimer()
+		sendCount := 0
+		startTime := time.Now()
 
-	wg := sync.WaitGroup{}
-	wg.Add(b.N)
+		wg := sync.WaitGroup{}
+		wg.Add(totalMessages)
 
-	go func() {
-		for i := 0; i < b.N; i++ {
-			msg := &benchmarkMessage{}
-			msg.SetContent("test message")
-			env := &Envelope[benchmarkMessage]{message: msg}
-			graph.Nodes[Node1Name].inputChans[inputChannelName] <- env
-			sendCount++
-		}
-	}()
+		go func() {
+			for i := 0; i < totalMessages; i++ {
+				msg := &benchmarkMessage{}
+				msg.SetContent("test message")
+				env := &Envelope[benchmarkMessage]{message: msg}
+				graph.Nodes[Node1Name].inputChans[inputChannelName] <- env
+				sendCount++
+			}
+		}()
 
-	doneCount := 0
-	for range graph.Nodes[Node5Name].outputChans[Node5Name+":"+outputChannelName].goChans[":final"] {
-		doneCount++
-		wg.Done()
-		if doneCount == b.N {
-			break
-		}
-		for _, edge := range graph.Edges {
-			if len(edge.Channel) == cap(edge.Channel) {
-				fmt.Printf("Buffer for channel %s full: %d\n", edge.Destination, len(edge.Channel))
+		doneCount := 0
+		for range graph.Nodes[Node5Name].outputChans[Node5Name+":"+outputChannelName].goChans[":final"] {
+			doneCount++
+			wg.Done()
+			if doneCount == totalMessages {
+				break
+			}
+			for _, edge := range graph.Edges {
+				if len(edge.Channel) == cap(edge.Channel) {
+					fmt.Printf("Buffer for channel %s full: %d\n", edge.Destination, len(edge.Channel))
+				}
 			}
 		}
+
+		logMemoryUsage()
+
+		wg.Wait()
+		elapsedTime := time.Since(startTime).Seconds()
+		b.StopTimer()
+
+		envelopesPerSecond := float64(doneCount) / elapsedTime
+		fmt.Printf("Processed %f envelopes per second for a bitrate of %d Mbps\n", envelopesPerSecond, bitrate(envelopesPerSecond))
 	}
-
-	logMemoryUsage()
-
-	wg.Wait()
-	elapsedTime := time.Since(startTime).Seconds()
-	fmt.Printf("\n%d messages processed\n", doneCount)
-	b.StopTimer()
-
 	graph.Stop()
-
-	envelopesPerSecond := float64(doneCount) / elapsedTime
-	fmt.Printf("Processed %f envelopes per second for a bitrate of %d Mbps\n", envelopesPerSecond, bitrate(envelopesPerSecond))
 }
 
 func bitrate(eps float64) int {
