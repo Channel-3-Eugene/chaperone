@@ -5,10 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
-	"os"
 	"runtime"
-	"runtime/pprof"
 	"sync"
 	"testing"
 	"time"
@@ -40,7 +37,6 @@ func (h *benchmarkHandler) Handle(msg *benchmarkMessage) (string, error) {
 type benchmarkSupervisorHandler struct{}
 
 func (h *benchmarkSupervisorHandler) Handle(msg *benchmarkMessage) (string, error) {
-	fmt.Printf("Supervisor received message: %s\n", msg.Content)
 	return "supervised", nil
 }
 
@@ -57,84 +53,40 @@ func bToMb(b uint64) uint64 {
 	return b / 1024 / 1024
 }
 
-func startMemoryProfiling() func() {
-	memFile, err := os.Create("mem.prof")
-	if err != nil {
-		log.Fatal("could not create memory profile: ", err)
-	}
-	return func() {
-		runtime.GC() // get up-to-date statistics
-		if err := pprof.WriteHeapProfile(memFile); err != nil {
-			log.Fatal("could not write memory profile: ", err)
-		}
-		memFile.Close()
-	}
-}
-
-func startCPUProfiling() func() {
-	cpuFile, err := os.Create("cpu.prof")
-	if err != nil {
-		log.Fatal("could not create CPU profile: ", err)
-	}
-	if err := pprof.StartCPUProfile(cpuFile); err != nil {
-		log.Fatal("could not start CPU profile: ", err)
-	}
-	return func() {
-		pprof.StopCPUProfile()
-		cpuFile.Close()
-	}
-}
-
 func BenchmarkGraph(b *testing.B) {
-	// stopCPUProfiling := startCPUProfiling()
-	// defer stopCPUProfiling()
-
-	// stopMemoryProfiling := startMemoryProfiling()
-	// defer stopMemoryProfiling()
-
 	ctx := context.Background()
 
 	SupervisorName := "supervisor1"
 	Node1Name := "node1"
-	Node1WorkerName := "worker1"
 	Node2Name := "node2"
-	Node2WorkerName := "worker2"
 	Node3Name := "node3"
-	Node3WorkerName := "worker3"
 	Node4Name := "node4"
-	Node4WorkerName := "worker4"
 	Node5Name := "node5"
-	Node5WorkerName := "worker5"
 	BufferSize := 100_000_000
 	inputChannelName := "input"
-	outputChannelName := "outChannel"
-	numberWorkers := 2
+	outputChannelName := "output"
+	numberWorkers := 4
 	totalMessages := 5_965_232
 
 	graph := NewGraph[benchmarkMessage](ctx).
 		AddSupervisor(SupervisorName, &benchmarkSupervisorHandler{}).
 		AddNode(SupervisorName, Node1Name, &benchmarkHandler{outChannelName: Node1Name + ":" + outputChannelName}).
-		AddWorkers(Node1Name, numberWorkers, Node1WorkerName).
 		AddNode(SupervisorName, Node2Name, &benchmarkHandler{outChannelName: Node2Name + ":" + outputChannelName}).
-		AddWorkers(Node2Name, numberWorkers, Node2WorkerName).
 		AddNode(SupervisorName, Node3Name, &benchmarkHandler{outChannelName: Node3Name + ":" + outputChannelName}).
-		AddWorkers(Node3Name, numberWorkers, Node3WorkerName).
 		AddNode(SupervisorName, Node4Name, &benchmarkHandler{outChannelName: Node4Name + ":" + outputChannelName}).
-		AddWorkers(Node4Name, numberWorkers, Node4WorkerName).
 		AddNode(SupervisorName, Node5Name, &benchmarkHandler{outChannelName: Node5Name + ":" + outputChannelName}).
-		AddWorkers(Node5Name, numberWorkers, Node5WorkerName).
-		AddEdge("", "", Node1Name, inputChannelName, BufferSize).
-		AddEdge(Node1Name, outputChannelName, Node2Name, inputChannelName, BufferSize).
-		AddEdge(Node2Name, outputChannelName, Node3Name, inputChannelName, BufferSize).
-		AddEdge(Node3Name, outputChannelName, Node4Name, inputChannelName, BufferSize).
-		AddEdge(Node4Name, outputChannelName, Node5Name, inputChannelName, BufferSize).
-		AddEdge(Node5Name, outputChannelName, "", "final", BufferSize).
+		AddEdge("", "", Node1Name, inputChannelName, BufferSize, numberWorkers).
+		AddEdge(Node1Name, outputChannelName, Node2Name, inputChannelName, BufferSize, numberWorkers).
+		AddEdge(Node2Name, outputChannelName, Node3Name, inputChannelName, BufferSize, numberWorkers).
+		AddEdge(Node3Name, outputChannelName, Node4Name, inputChannelName, BufferSize, numberWorkers).
+		AddEdge(Node4Name, outputChannelName, Node5Name, inputChannelName, BufferSize, numberWorkers).
+		AddEdge(Node5Name, outputChannelName, "", "final", BufferSize, numberWorkers).
 		Start()
 
 	fmt.Println("Graph started")
 	fmt.Printf("Number of nodes: %d\n", len(graph.Nodes))
 
-	for range 10 {
+	for i := 0; i < 10; i++ {
 		// Run the benchmark
 		b.ResetTimer()
 		sendCount := 0
@@ -148,7 +100,7 @@ func BenchmarkGraph(b *testing.B) {
 				msg := &benchmarkMessage{}
 				msg.SetContent("test message")
 				env := &Envelope[benchmarkMessage]{message: msg}
-				graph.Nodes[Node1Name].inputChans[inputChannelName] <- env
+				graph.Nodes[Node1Name].inputChans[Node1Name+":"+inputChannelName] <- env
 				sendCount++
 			}
 		}()

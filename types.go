@@ -21,6 +21,7 @@ type Worker[T Message] struct {
 	cancel  context.CancelCauseFunc
 	name    string
 	handler Handler[T]
+	channel chan *Envelope[T] // Each worker listens to a specific channel
 }
 
 type Edge[T Message] struct {
@@ -40,7 +41,7 @@ type Node[T Message] struct {
 	cancel        context.CancelCauseFunc
 	Name          string
 	handler       Handler[T]
-	workerPool    []Worker[T]
+	workerPool    map[string][]Worker[T] // Updated to map channels to workers
 	workerCounter uint64
 
 	inputChans  map[string]chan *Envelope[T]

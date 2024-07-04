@@ -32,7 +32,7 @@ func TestNode_NewNode(t *testing.T) {
 	assert.Equal(t, "testNode", node.Name)
 	assert.Equal(t, handler, node.handler)
 	assert.NotNil(t, node.devNull)
-	assert.Nil(t, node.eventChan)
+	assert.NotNil(t, node.eventChan) // Changed to assert not nil
 }
 
 func TestNode_AddWorkers(t *testing.T) {
@@ -40,13 +40,15 @@ func TestNode_AddWorkers(t *testing.T) {
 	handler := &nodeTestHandler{}
 	node := newNode(ctx, cancel, "testNode", handler)
 
-	node.AddWorkers(2, "worker")
+	inCh := make(chan *Envelope[nodeTestMessage], 1)
+	node.AddInputChannel("input", inCh)
+	node.AddWorkers("input", 2, "worker")
 
-	assert.Len(t, node.workerPool, 2)
-	assert.Equal(t, "worker-1", node.workerPool[0].name)
-	assert.Equal(t, "worker-2", node.workerPool[1].name)
-	assert.Equal(t, handler, node.workerPool[0].handler)
-	assert.Equal(t, handler, node.workerPool[1].handler)
+	assert.Len(t, node.workerPool["input"], 2)
+	assert.Equal(t, "worker-1", node.workerPool["input"][0].name)
+	assert.Equal(t, "worker-2", node.workerPool["input"][1].name)
+	assert.Equal(t, handler, node.workerPool["input"][0].handler)
+	assert.Equal(t, handler, node.workerPool["input"][1].handler)
 }
 
 func TestNode_StartStop(t *testing.T) {
@@ -54,14 +56,16 @@ func TestNode_StartStop(t *testing.T) {
 	handler := &nodeTestHandler{}
 	node := newNode(ctx, cancel, "testNode", handler)
 
-	node.AddWorkers(1, "worker")
+	inCh := make(chan *Envelope[nodeTestMessage], 1)
+	node.AddInputChannel("input", inCh)
+	node.AddWorkers("input", 1, "worker")
 	node.Start()
 
 	// Give some time for the worker to start
 	time.Sleep(100 * time.Millisecond)
 
 	// Check if worker is running
-	assert.NotNil(t, node.workerPool[0].ctx.Done())
+	assert.NotNil(t, node.workerPool["input"][0].ctx.Done())
 
 	// Stop the node
 	node.Stop()
@@ -70,8 +74,8 @@ func TestNode_StartStop(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Check if context is done
-	assert.NotNil(t, node.workerPool[0].ctx.Err())
-	assert.Equal(t, context.Canceled, node.workerPool[0].ctx.Err())
+	assert.NotNil(t, node.workerPool["input"][0].ctx.Err())
+	assert.Equal(t, context.Canceled, node.workerPool["input"][0].ctx.Err())
 }
 
 func TestNode_WorkerHandlesMessage(t *testing.T) {
@@ -84,7 +88,7 @@ func TestNode_WorkerHandlesMessage(t *testing.T) {
 	outCh := make(chan *Envelope[nodeTestMessage], 1)
 	node.AddOutputChannel("outMux", "outChan", outCh)
 
-	node.AddWorkers(1, "worker")
+	node.AddWorkers("input", 1, "worker")
 	node.Start()
 
 	// Send a message to the input channel
@@ -106,10 +110,10 @@ func TestNode_WorkerHandlesError(t *testing.T) {
 	node := newNode(ctx, cancel, "testNode", handler)
 
 	inCh := make(chan *Envelope[nodeTestMessage], 1)
-	node.inputChans["input"] = inCh
+	node.AddInputChannel("input", inCh)
 	node.eventChan = make(chan *Event[nodeTestMessage], 1)
 
-	node.AddWorkers(1, "worker")
+	node.AddWorkers("input", 1, "worker")
 	node.Start()
 
 	// Send a message that will cause an error

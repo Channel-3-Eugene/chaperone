@@ -8,31 +8,39 @@ import (
 )
 
 func newNode[T Message](ctx context.Context, cancel context.CancelCauseFunc, name string, handler Handler[T]) *Node[T] {
-	node := Node[T]{
+	return &Node[T]{
 		ctx:         ctx,
 		cancel:      cancel,
 		Name:        name,
 		handler:     handler,
-		workerPool:  []Worker[T]{},
+		workerPool:  make(map[string][]Worker[T]),
 		inputChans:  make(map[string]chan *Envelope[T]),
 		outputChans: make(map[string]OutMux[T]),
-		devNull:     NewChannel[T](1000, true),
-		eventChan:   nil, // Supervisor can attach to this
+		devNull:     make(chan *Envelope[T]),
+		eventChan:   make(chan *Event[T]),
 	}
-
-	return &node
 }
 
-func (n *Node[T]) AddWorkers(num int, name string) {
+func (n *Node[T]) AddWorkers(channelName string, num int, name string) {
+	if _, ok := n.inputChans[channelName]; !ok {
+		panic(fmt.Sprintf("channel %s not found", channelName))
+	}
+
 	c, cancel := context.WithCancelCause(n.ctx)
+	if n.workerPool == nil {
+		n.workerPool = make(map[string][]Worker[T])
+	}
+
 	for i := 0; i < num; i++ {
 		numWorker := atomic.AddUint64(&n.workerCounter, 1)
-		n.workerPool = append(n.workerPool, Worker[T]{
+		worker := Worker[T]{
 			name:    fmt.Sprintf("%s-%d", name, numWorker),
 			handler: n.handler,
 			ctx:     c,
 			cancel:  cancel,
-		})
+			channel: n.inputChans[channelName], // Associate worker with the specific channel
+		}
+		n.workerPool[channelName] = append(n.workerPool[channelName], worker)
 	}
 }
 
@@ -50,8 +58,10 @@ func (n *Node[T]) AddOutputChannel(muxName, channelName string, ch chan *Envelop
 }
 
 func (n *Node[T]) Start() {
-	for _, worker := range n.workerPool {
-		go n.startWorker(worker)
+	for _, workers := range n.workerPool {
+		for _, worker := range workers {
+			go n.startWorker(worker)
+		}
 	}
 }
 
@@ -73,40 +83,27 @@ func (n *Node[T]) startWorker(w Worker[T]) {
 	}()
 
 	for {
-		stop := false
-		openChannels := len(n.inputChans)
-		for _, ch := range n.inputChans {
-			select {
-			case <-w.ctx.Done():
-				stop = true
-
-			case env, ok := <-ch:
-				if !ok {
-					openChannels--
-					if openChannels == 0 {
-						fmt.Printf("All input channels closed for worker %s\n", w.name)
-						continue
-					}
-				}
-
-				env.inChan = ch
-				outChName, ev := w.handler.Handle(env.message)
-
-				if ev != nil {
-					newErr := NewEvent(ErrorLevelError, ev, env.message)
-					n.handleWorkerEvent(&w, &newErr, env)
-				} else if mux, ok := n.outputChans[outChName]; ok {
-					mux.Send(env)
-				} else {
-					newErr := NewEvent(ErrorLevelError, fmt.Errorf("output channel %s not found", outChName), env.message)
-					n.handleWorkerEvent(&w, &newErr, env)
-					n.devNull <- env
-				}
-			}
-
-			if stop && openChannels == 0 {
-				n.Stop()
+		select {
+		case <-w.ctx.Done():
+			return
+		case env, ok := <-w.channel:
+			if !ok {
+				// Channel closed
 				return
+			}
+			env.inChan = w.channel
+			outChName, ev := w.handler.Handle(env.message)
+
+			if ev != nil {
+				fmt.Printf("Worker %s encountered error: %v\n", w.name, ev)
+				newErr := NewEvent(ErrorLevelError, ev, env.message)
+				n.handleWorkerEvent(&w, &newErr, env)
+			} else if mux, ok := n.outputChans[outChName]; ok {
+				mux.Send(env)
+			} else {
+				newErr := NewEvent(ErrorLevelError, fmt.Errorf("output channel %s not found", outChName), env.message)
+				n.handleWorkerEvent(&w, &newErr, env)
+				n.devNull <- env
 			}
 		}
 	}

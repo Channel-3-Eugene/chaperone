@@ -90,15 +90,15 @@ func TestGraph_AddEdge(t *testing.T) {
 			AddSupervisor(supervisorName, &graphSupervisorTestHandler{}).
 			AddNode(supervisorName, nodeName1, handler).
 			AddNode(supervisorName, nodeName2, handler).
-			AddEdge(nodeName1, outputName, nodeName2, inputName, 10)
+			AddEdge(nodeName1, outputName, nodeName2, inputName, 10, 1)
 
 		// Verify channels are set up correctly
 		assert.Contains(t, graph.Nodes[nodeName1].outputChans, nodeName1+":"+outputName)
-		assert.Contains(t, graph.Nodes[nodeName2].inputChans, inputName)
+		assert.Contains(t, graph.Nodes[nodeName2].inputChans, nodeName2+":"+inputName)
 
 		// Verify the same channel is being used
 		outChannel := graph.Nodes[nodeName1].outputChans[nodeName1+":"+outputName].goChans[nodeName2+":"+inputName]
-		inChannel := graph.Nodes[nodeName2].inputChans[inputName]
+		inChannel := graph.Nodes[nodeName2].inputChans[nodeName2+":"+inputName]
 		assert.Equal(t, outChannel, inChannel)
 
 		// Verify the buffer size
@@ -139,7 +139,7 @@ func TestGraph_Start(t *testing.T) {
 			AddSupervisor(supervisorName, &graphSupervisorTestHandler{}).
 			AddNode(supervisorName, nodeName1, handler).
 			AddNode(supervisorName, nodeName2, handler).
-			AddEdge(nodeName1, "outChannel", nodeName2, "input", 10)
+			AddEdge(nodeName1, "outChannel", nodeName2, "input", 10, 1)
 
 		// Start the graph
 		graph.Start()

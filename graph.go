@@ -2,6 +2,7 @@ package chaperone
 
 import (
 	"context"
+	"fmt"
 	"sync"
 )
 
@@ -30,26 +31,23 @@ func (g *Graph[T]) AddNode(supervisorName, name string, handler Handler[T]) *Gra
 	return g
 }
 
-func (g *Graph[T]) AddWorkers(nodeName string, num int, name string) *Graph[T] {
-	g.Nodes[nodeName].AddWorkers(num, name)
-	return g
-}
-
-func (g *Graph[T]) AddEdge(fromNodeName, outchan, toNodeName, inchan string, bufferSize int) *Graph[T] {
-	channel := NewChannel[T](bufferSize, false)
+func (g *Graph[T]) AddEdge(fromNodeName, outchan, toNodeName, inchan string, bufferSize int, numWorkers int) *Graph[T] {
+	channel := make(chan *Envelope[T], bufferSize)
 	nodecount := 0
 	if fromNodeName != "" && outchan != "" {
-		if _, ok := g.Nodes[fromNodeName]; ok {
+		if fromNode, ok := g.Nodes[fromNodeName]; ok {
 			nodecount++
 			muxName := fromNodeName + ":" + outchan
 			channelName := toNodeName + ":" + inchan
-			g.Nodes[fromNodeName].AddOutputChannel(muxName, channelName, channel)
+			fromNode.AddOutputChannel(muxName, channelName, channel)
 		}
 	}
 	if toNodeName != "" && inchan != "" {
-		nodecount++
-		if _, ok := g.Nodes[toNodeName]; ok {
-			g.Nodes[toNodeName].AddInputChannel(inchan, channel)
+		if toNode, ok := g.Nodes[toNodeName]; ok {
+			nodecount++
+			channelName := toNodeName + ":" + inchan
+			toNode.AddInputChannel(channelName, channel)
+			toNode.AddWorkers(channelName, numWorkers, fmt.Sprintf("%s-worker", channelName))
 		}
 	}
 	if nodecount == 0 {
@@ -65,7 +63,11 @@ func (g *Graph[T]) Start() *Graph[T] {
 		wg.Add(1)
 		go func(n *Node[T]) {
 			defer wg.Done()
-			n.Start()
+			for _, workers := range n.workerPool {
+				for _, worker := range workers {
+					go n.startWorker(worker)
+				}
+			}
 		}(node)
 	}
 	wg.Wait() // Ensure all nodes are started
