@@ -48,8 +48,8 @@ func TestNode_AddWorkers(t *testing.T) {
 	node.AddWorkers("input", 2, "worker")
 
 	assert.Len(t, node.WorkerPool["input"], 2)
-	assert.Equal(t, "worker-1", node.WorkerPool["input"][0].name)
-	assert.Equal(t, "worker-2", node.WorkerPool["input"][1].name)
+	assert.Equal(t, "input-worker-1", node.WorkerPool["input"][0].name)
+	assert.Equal(t, "input-worker-2", node.WorkerPool["input"][1].name)
 	assert.Equal(t, handler, node.WorkerPool["input"][0].handler)
 	assert.Equal(t, handler, node.WorkerPool["input"][1].handler)
 }
