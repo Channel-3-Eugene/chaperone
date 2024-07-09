@@ -31,6 +31,8 @@ func (h *benchmarkHandler) Handle(_ context.Context, env *Envelope[benchmarkMess
 	if env.Message.String() == "error" {
 		return errors.New("test error")
 	}
+
+	env.OutChan = env.CurrentNode.OutputChans[h.outChannelName]
 	return nil
 }
 
@@ -65,7 +67,7 @@ func BenchmarkGraph(b *testing.B) {
 	BufferSize := 100_000_000
 	inputChannelName := "input"
 	outputChannelName := "output"
-	numberWorkers := 4
+	numWorkers := 4
 	totalMessages := 5_965_232
 
 	graph := NewGraph[benchmarkMessage](ctx, "graph", &Config{}).
@@ -75,18 +77,21 @@ func BenchmarkGraph(b *testing.B) {
 		AddNode(SupervisorName, Node3Name, &benchmarkHandler{outChannelName: Node3Name + ":" + outputChannelName}).
 		AddNode(SupervisorName, Node4Name, &benchmarkHandler{outChannelName: Node4Name + ":" + outputChannelName}).
 		AddNode(SupervisorName, Node5Name, &benchmarkHandler{outChannelName: Node5Name + ":" + outputChannelName}).
-		AddEdge("", "", Node1Name, inputChannelName, BufferSize, numberWorkers).
-		AddEdge(Node1Name, outputChannelName, Node2Name, inputChannelName, BufferSize, numberWorkers).
-		AddEdge(Node2Name, outputChannelName, Node3Name, inputChannelName, BufferSize, numberWorkers).
-		AddEdge(Node3Name, outputChannelName, Node4Name, inputChannelName, BufferSize, numberWorkers).
-		AddEdge(Node4Name, outputChannelName, Node5Name, inputChannelName, BufferSize, numberWorkers).
-		AddEdge(Node5Name, outputChannelName, "", "final", BufferSize, numberWorkers).
+		AddEdge("", "", Node1Name, inputChannelName, BufferSize, numWorkers).
+		AddEdge(Node1Name, outputChannelName, Node2Name, inputChannelName, BufferSize, numWorkers).
+		AddEdge(Node2Name, outputChannelName, Node3Name, inputChannelName, BufferSize, numWorkers).
+		AddEdge(Node3Name, outputChannelName, Node4Name, inputChannelName, BufferSize, numWorkers).
+		AddEdge(Node4Name, outputChannelName, Node5Name, inputChannelName, BufferSize, numWorkers).
+		AddEdge(Node5Name, outputChannelName, "", "final", BufferSize, numWorkers).
 		Start()
 
 	fmt.Println("Graph started")
 	fmt.Printf("Number of nodes: %d\n", len(graph.Nodes))
 
-	for i := 0; i < 10; i++ {
+	loops := 10
+	sumElapsedTime := 0.0
+	sumDoneCount := 0
+	for i := 0; i < loops; i++ {
 		// Run the benchmark
 		b.ResetTimer()
 		sendCount := 0
@@ -123,12 +128,17 @@ func BenchmarkGraph(b *testing.B) {
 
 		wg.Wait()
 		elapsedTime := time.Since(startTime).Seconds()
+		sumElapsedTime += elapsedTime
+		sumDoneCount += doneCount
 		b.StopTimer()
 
 		envelopesPerSecond := float64(doneCount) / elapsedTime
 		fmt.Printf("Processed %f envelopes per second for a bitrate of %d Mbps\n", envelopesPerSecond, bitrate(envelopesPerSecond))
 	}
 	graph.Stop()
+
+	sumEnvelopesPerSecond := float64(sumDoneCount) / sumElapsedTime
+	fmt.Printf("Average %f envelopes per second for a bitrate of %d Mbps\n", sumEnvelopesPerSecond, bitrate(sumEnvelopesPerSecond))
 }
 
 func bitrate(eps float64) int {
