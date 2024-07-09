@@ -56,7 +56,8 @@ func TestChaperone_EndToEnd(t *testing.T) {
 	// Create the graph
 	ctx := context.Background()
 
-	SupervisorName := "supervisor1"
+	ParentSupervisorName := "parent supervisor"
+	ChildSupervisorName := "child supervisor"
 	Node1Name := "node1"
 	Node2Name := "node2"
 	inputChannelName := "input"
@@ -65,9 +66,10 @@ func TestChaperone_EndToEnd(t *testing.T) {
 	fmt.Print("setting up graph\n")
 
 	graph := NewGraph[testMessage](ctx, "graph", &Config{}).
-		AddSupervisor(SupervisorName, &testSupervisorHandler{}).
-		AddNode(SupervisorName, Node1Name, &testHandler{outChannelName: Node1Name + ":" + outputChannelName}).
-		AddNode(SupervisorName, Node2Name, &testHandler{outChannelName: Node2Name + ":" + outputChannelName}).
+		AddSupervisor(nil, ParentSupervisorName, &testSupervisorHandler{}).
+		AddSupervisor(&ParentSupervisorName, ChildSupervisorName, &testSupervisorHandler{}).
+		AddNode(ChildSupervisorName, Node1Name, &testHandler{outChannelName: Node1Name + ":" + outputChannelName}).
+		AddNode(ChildSupervisorName, Node2Name, &testHandler{outChannelName: Node2Name + ":" + outputChannelName}).
 		AddEdge("", "start", Node1Name, inputChannelName, 10, 1).
 		AddEdge(Node1Name, outputChannelName, Node2Name, inputChannelName, 10, 1).
 		AddEdge(Node2Name, outputChannelName, "", "final", 10, 1).
@@ -112,7 +114,7 @@ func TestChaperone_EndToEnd(t *testing.T) {
 
 	// Verify that the error is handled and the message is sent to the event channel
 	select {
-	case ev := <-graph.Supervisors[SupervisorName].Events:
+	case ev := <-graph.Supervisors[ChildSupervisorName].Events:
 		assert.Equal(t, ErrorLevelError, ev.Level)
 		assert.Contains(t, ev.Event.Error(), "test error")
 		assert.Equal(t, msgError, ev.Envelope.Message)

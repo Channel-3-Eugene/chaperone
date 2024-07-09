@@ -22,8 +22,13 @@ func (g *Graph[T]) Debug(state bool) {
 	g.Config.Debug = state
 }
 
-func (g *Graph[T]) AddSupervisor(name string, handler Handler[T]) *Graph[T] {
+func (g *Graph[T]) AddSupervisor(parentName *string, name string, handler Handler[T]) *Graph[T] {
 	g.Supervisors[name] = NewSupervisor[T](g.ctx, name, handler)
+	if parentName != nil {
+		if parent, ok := g.Supervisors[*parentName]; ok {
+			parent.AddSupervisor(g.Supervisors[name])
+		}
+	}
 	return g
 }
 

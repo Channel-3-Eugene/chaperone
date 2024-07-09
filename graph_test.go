@@ -50,11 +50,15 @@ func TestGraph_AddSupervisor(t *testing.T) {
 		ctx := context.Background()
 		graph := NewGraph[graphTestMessage](ctx, "graph", &Config{})
 
-		supervisorName := "TestSupervisor"
-		graph.AddSupervisor(supervisorName, &graphSupervisorTestHandler{})
+		parentSupervisorName := "parent supervisor"
+		childSupervisorName := "child supervisor"
+		graph.AddSupervisor(nil, parentSupervisorName, &graphSupervisorTestHandler{})
+		graph.AddSupervisor(&parentSupervisorName, childSupervisorName, &graphSupervisorTestHandler{})
 
-		assert.Contains(t, graph.Supervisors, supervisorName)
-		assert.Equal(t, supervisorName, graph.Supervisors[supervisorName].Name)
+		assert.Contains(t, graph.Supervisors, parentSupervisorName)
+		assert.Contains(t, graph.Supervisors, childSupervisorName)
+		assert.Equal(t, parentSupervisorName, graph.Supervisors[parentSupervisorName].Name)
+		assert.Equal(t, childSupervisorName, graph.Supervisors[childSupervisorName].Name)
 	})
 }
 
@@ -64,7 +68,7 @@ func TestGraph_AddNode(t *testing.T) {
 		graph := NewGraph[graphTestMessage](ctx, "graph", &Config{})
 
 		supervisorName := "TestSupervisor"
-		graph.AddSupervisor(supervisorName, &graphSupervisorTestHandler{})
+		graph.AddSupervisor(nil, supervisorName, &graphSupervisorTestHandler{})
 		supervisor := graph.Supervisors[supervisorName]
 
 		nodeName := "TestNode"
@@ -92,7 +96,7 @@ func TestGraph_AddEdge(t *testing.T) {
 		handler := &graphTestHandler{}
 
 		graph := NewGraph[graphTestMessage](ctx, "graph", &Config{}).
-			AddSupervisor(supervisorName, &graphSupervisorTestHandler{}).
+			AddSupervisor(nil, supervisorName, &graphSupervisorTestHandler{}).
 			AddNode(supervisorName, nodeName1, handler).
 			AddNode(supervisorName, nodeName2, handler).
 			AddEdge(nodeName1, outputName, nodeName2, inputName, 10, 1)
@@ -141,7 +145,7 @@ func TestGraph_Start(t *testing.T) {
 		nodeName2 := "Node2"
 
 		graph := NewGraph[graphTestMessage](ctx, "graph", &Config{}).
-			AddSupervisor(supervisorName, &graphSupervisorTestHandler{}).
+			AddSupervisor(nil, supervisorName, &graphSupervisorTestHandler{}).
 			AddNode(supervisorName, nodeName1, handler).
 			AddNode(supervisorName, nodeName2, handler).
 			AddEdge(nodeName1, "outChannel", nodeName2, "input", 10, 1)

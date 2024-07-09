@@ -69,7 +69,7 @@ func BenchmarkGraph(b *testing.B) {
 	totalMessages := 5_965_232
 
 	graph := NewGraph[benchmarkMessage](ctx, "graph", &Config{}).
-		AddSupervisor(SupervisorName, &benchmarkSupervisorHandler{}).
+		AddSupervisor(nil, SupervisorName, &benchmarkSupervisorHandler{}).
 		AddNode(SupervisorName, Node1Name, &benchmarkHandler{outChannelName: Node1Name + ":" + outputChannelName}).
 		AddNode(SupervisorName, Node2Name, &benchmarkHandler{outChannelName: Node2Name + ":" + outputChannelName}).
 		AddNode(SupervisorName, Node3Name, &benchmarkHandler{outChannelName: Node3Name + ":" + outputChannelName}).
