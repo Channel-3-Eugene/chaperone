@@ -7,12 +7,20 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type channelTestMessage struct {
+	Content string
+}
+
+func (m channelTestMessage) String() string {
+	return m.Content
+}
+
 func TestChannel_NewChannel(t *testing.T) {
-	ch := NewChannel[string](10, false)
+	ch := NewChannel[channelTestMessage](10, false)
 	assert.NotNil(t, ch, "Channel should not be nil")
 
-	msg := "Test message"
-	envelope := &Envelope[string]{message: &msg}
+	msg := channelTestMessage{Content: "Test message"}
+	envelope := &Envelope[channelTestMessage]{Message: msg}
 	ch <- envelope
 
 	received := <-ch
@@ -23,11 +31,11 @@ func TestChannel_NewChannel(t *testing.T) {
 }
 
 func TestChannel_NewDevNull(t *testing.T) {
-	ch := NewChannel[string](10, true)
+	ch := NewChannel[channelTestMessage](10, true)
 	assert.NotNil(t, ch, "Channel should not be nil")
 
-	msg := "Test message"
-	envelope := &Envelope[string]{message: &msg}
+	msg := channelTestMessage{Content: "Test message"}
+	envelope := &Envelope[channelTestMessage]{Message: msg}
 	ch <- envelope
 
 	// Ensure that the message is consumed and the channel does not block

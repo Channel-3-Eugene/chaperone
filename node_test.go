@@ -11,50 +11,52 @@ import (
 
 type nodeTestMessage struct {
 	Content string
+	Mux     string
+}
+
+func (m nodeTestMessage) String() string {
+	return m.Content
 }
 
 type nodeTestHandler struct{}
 
-func (h *nodeTestHandler) Handle(msg *nodeTestMessage) (string, error) {
-	if msg.Content == "error" {
-		return "", errors.New("test error")
+func (h *nodeTestHandler) Handle(_ context.Context, env *Envelope[nodeTestMessage]) error {
+	if env.Message.Content == "error" {
+		return errors.New("test error")
 	}
-	return "outMux", nil
+	env.OutChan = env.CurrentNode.OutputChans[env.Message.Mux]
+	return nil
 }
 
 func TestNode_NewNode(t *testing.T) {
-	ctx, cancel := context.WithCancelCause(context.Background())
 	handler := &nodeTestHandler{}
 
-	node := newNode(ctx, cancel, "testNode", handler)
+	node := NewNode(context.Background(), "testNode", handler)
 
 	assert.NotNil(t, node)
 	assert.Equal(t, "testNode", node.Name)
-	assert.Equal(t, handler, node.handler)
-	assert.NotNil(t, node.devNull)
-	assert.NotNil(t, node.eventChan) // Changed to assert not nil
+	assert.Equal(t, handler, node.Handler)
+	assert.NotNil(t, node.EventChan) // Changed to assert not nil
 }
 
 func TestNode_AddWorkers(t *testing.T) {
-	ctx, cancel := context.WithCancelCause(context.Background())
 	handler := &nodeTestHandler{}
-	node := newNode(ctx, cancel, "testNode", handler)
+	node := NewNode(context.Background(), "testNode", handler)
 
 	inCh := make(chan *Envelope[nodeTestMessage], 1)
 	node.AddInputChannel("input", inCh)
 	node.AddWorkers("input", 2, "worker")
 
-	assert.Len(t, node.workerPool["input"], 2)
-	assert.Equal(t, "worker-1", node.workerPool["input"][0].name)
-	assert.Equal(t, "worker-2", node.workerPool["input"][1].name)
-	assert.Equal(t, handler, node.workerPool["input"][0].handler)
-	assert.Equal(t, handler, node.workerPool["input"][1].handler)
+	assert.Len(t, node.WorkerPool["input"], 2)
+	assert.Equal(t, "worker-1", node.WorkerPool["input"][0].name)
+	assert.Equal(t, "worker-2", node.WorkerPool["input"][1].name)
+	assert.Equal(t, handler, node.WorkerPool["input"][0].handler)
+	assert.Equal(t, handler, node.WorkerPool["input"][1].handler)
 }
 
 func TestNode_StartStop(t *testing.T) {
-	ctx, cancel := context.WithCancelCause(context.Background())
 	handler := &nodeTestHandler{}
-	node := newNode(ctx, cancel, "testNode", handler)
+	node := NewNode(context.Background(), "testNode", handler)
 
 	inCh := make(chan *Envelope[nodeTestMessage], 1)
 	node.AddInputChannel("input", inCh)
@@ -65,7 +67,7 @@ func TestNode_StartStop(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Check if worker is running
-	assert.NotNil(t, node.workerPool["input"][0].ctx.Done())
+	assert.NotNil(t, node.WorkerPool["input"][0].ctx.Done())
 
 	// Stop the node
 	node.Stop()
@@ -74,14 +76,13 @@ func TestNode_StartStop(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Check if context is done
-	assert.NotNil(t, node.workerPool["input"][0].ctx.Err())
-	assert.Equal(t, context.Canceled, node.workerPool["input"][0].ctx.Err())
+	assert.NotNil(t, node.WorkerPool["input"][0].ctx.Err())
+	assert.Equal(t, context.Canceled, node.WorkerPool["input"][0].ctx.Err())
 }
 
 func TestNode_WorkerHandlesMessage(t *testing.T) {
-	ctx, cancel := context.WithCancelCause(context.Background())
 	handler := &nodeTestHandler{}
-	node := newNode(ctx, cancel, "testNode", handler)
+	node := NewNode(context.Background(), "testNode", handler)
 
 	inCh := make(chan *Envelope[nodeTestMessage], 1)
 	node.AddInputChannel("input", inCh)
@@ -92,8 +93,8 @@ func TestNode_WorkerHandlesMessage(t *testing.T) {
 	node.Start()
 
 	// Send a message to the input channel
-	msg := &nodeTestMessage{Content: "test"}
-	env := &Envelope[nodeTestMessage]{message: msg, numRetries: 3}
+	msg := nodeTestMessage{Content: "test", Mux: "outMux"}
+	env := &Envelope[nodeTestMessage]{Message: msg, NumRetries: 3}
 	inCh <- env
 
 	// Give some time for the worker to process the message
@@ -101,32 +102,31 @@ func TestNode_WorkerHandlesMessage(t *testing.T) {
 
 	// Check if the message was sent to the output channel
 	received := <-outCh
-	assert.Equal(t, msg, received.message)
+	assert.Equal(t, msg, received.Message)
 }
 
 func TestNode_WorkerHandlesError(t *testing.T) {
-	ctx, cancel := context.WithCancelCause(context.Background())
 	handler := &nodeTestHandler{}
-	node := newNode(ctx, cancel, "testNode", handler)
+	node := NewNode(context.Background(), "testNode", handler)
 
 	inCh := make(chan *Envelope[nodeTestMessage], 1)
 	node.AddInputChannel("input", inCh)
-	node.eventChan = make(chan *Event[nodeTestMessage], 1)
+	node.EventChan = make(chan *Event[nodeTestMessage], 1)
 
 	node.AddWorkers("input", 1, "worker")
 	node.Start()
 
 	// Send a message that will cause an error
-	msg := &nodeTestMessage{Content: "error"}
-	env := &Envelope[nodeTestMessage]{message: msg, numRetries: 3}
+	msg := nodeTestMessage{Content: "error"}
+	env := &Envelope[nodeTestMessage]{Message: msg, NumRetries: 3}
 	inCh <- env
 
 	// Give some time for the worker to process the message
 	time.Sleep(100 * time.Millisecond)
 
 	// Check if an event was sent to the event channel
-	ev := <-node.eventChan
+	ev := <-node.EventChan
 	assert.Equal(t, ErrorLevelError, ev.Level)
 	assert.Equal(t, "test error", ev.Event.Error())
-	assert.Equal(t, msg, ev.Message)
+	assert.Equal(t, msg, ev.Envelope.Message)
 }

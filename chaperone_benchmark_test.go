@@ -15,29 +15,29 @@ type benchmarkMessage struct {
 	Content [180]byte
 }
 
-func (msg *benchmarkMessage) SetContent(content string) {
-	copy(msg.Content[:], content)
+func (m benchmarkMessage) String() string {
+	return string(bytes.Trim(m.Content[:], "\x00"))
 }
 
-func (msg *benchmarkMessage) GetContent() string {
-	return string(bytes.Trim(msg.Content[:], "\x00"))
+func (msg *benchmarkMessage) SetContent(content string) {
+	copy(msg.Content[:], content)
 }
 
 type benchmarkHandler struct {
 	outChannelName string
 }
 
-func (h *benchmarkHandler) Handle(msg *benchmarkMessage) (string, error) {
-	if msg.GetContent() == "error" {
-		return "", errors.New("test error")
+func (h *benchmarkHandler) Handle(_ context.Context, env *Envelope[benchmarkMessage]) error {
+	if env.Message.String() == "error" {
+		return errors.New("test error")
 	}
-	return h.outChannelName, nil
+	return nil
 }
 
 type benchmarkSupervisorHandler struct{}
 
-func (h *benchmarkSupervisorHandler) Handle(msg *benchmarkMessage) (string, error) {
-	return "supervised", nil
+func (h *benchmarkSupervisorHandler) Handle(_ context.Context, _ *Envelope[benchmarkMessage]) error {
+	return nil
 }
 
 func logMemoryUsage() {
@@ -68,7 +68,7 @@ func BenchmarkGraph(b *testing.B) {
 	numberWorkers := 4
 	totalMessages := 5_965_232
 
-	graph := NewGraph[benchmarkMessage](ctx).
+	graph := NewGraph[benchmarkMessage](ctx, "graph", &Config{}).
 		AddSupervisor(SupervisorName, &benchmarkSupervisorHandler{}).
 		AddNode(SupervisorName, Node1Name, &benchmarkHandler{outChannelName: Node1Name + ":" + outputChannelName}).
 		AddNode(SupervisorName, Node2Name, &benchmarkHandler{outChannelName: Node2Name + ":" + outputChannelName}).
@@ -97,16 +97,16 @@ func BenchmarkGraph(b *testing.B) {
 
 		go func() {
 			for i := 0; i < totalMessages; i++ {
-				msg := &benchmarkMessage{}
+				msg := benchmarkMessage{}
 				msg.SetContent("test message")
-				env := &Envelope[benchmarkMessage]{message: msg}
-				graph.Nodes[Node1Name].inputChans[Node1Name+":"+inputChannelName] <- env
+				env := &Envelope[benchmarkMessage]{Message: msg}
+				graph.Nodes[Node1Name].InputChans[Node1Name+":"+inputChannelName] <- env
 				sendCount++
 			}
 		}()
 
 		doneCount := 0
-		for range graph.Nodes[Node5Name].outputChans[Node5Name+":"+outputChannelName].goChans[":final"] {
+		for range graph.Nodes[Node5Name].OutputChans[Node5Name+":"+outputChannelName].GoChans[":final"] {
 			doneCount++
 			wg.Done()
 			if doneCount == totalMessages {

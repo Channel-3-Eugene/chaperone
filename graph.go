@@ -6,25 +6,29 @@ import (
 	"sync"
 )
 
-func NewGraph[T Message](ctx context.Context) *Graph[T] {
+func NewGraph[T Message](ctx context.Context, name string, config *Config) *Graph[T] {
 	ctx, cancel := context.WithCancel(ctx)
 	return &Graph[T]{
 		ctx:         ctx,
 		cancel:      cancel,
+		Name:        name,
 		Nodes:       make(map[string]*Node[T]),
 		Supervisors: make(map[string]*Supervisor[T]),
 		Edges:       make([]*Edge[T], 0),
 	}
 }
 
+func (g *Graph[T]) Debug(state bool) {
+	g.Config.Debug = state
+}
+
 func (g *Graph[T]) AddSupervisor(name string, handler Handler[T]) *Graph[T] {
-	g.Supervisors[name] = NewSupervisor[T](name, handler)
+	g.Supervisors[name] = NewSupervisor[T](g.ctx, name, handler)
 	return g
 }
 
 func (g *Graph[T]) AddNode(supervisorName, name string, handler Handler[T]) *Graph[T] {
-	c, cancel := context.WithCancelCause(g.ctx)
-	g.Nodes[name] = newNode(c, cancel, name, handler)
+	g.Nodes[name] = NewNode(g.ctx, name, handler)
 	if supervisor, ok := g.Supervisors[supervisorName]; ok {
 		supervisor.AddNode(g.Nodes[name])
 	}
@@ -63,7 +67,7 @@ func (g *Graph[T]) Start() *Graph[T] {
 		wg.Add(1)
 		go func(n *Node[T]) {
 			defer wg.Done()
-			for _, workers := range n.workerPool {
+			for _, workers := range n.WorkerPool {
 				for _, worker := range workers {
 					go n.startWorker(worker)
 				}

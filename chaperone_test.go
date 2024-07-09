@@ -16,23 +16,27 @@ type testMessage struct {
 	Content string
 }
 
+func (m testMessage) String() string {
+	return m.Content
+}
+
 type testHandler struct {
 	outChannelName string
 }
 
-func (h *testHandler) Handle(msg *testMessage) (string, error) {
-	fmt.Printf("Handler processing message: %+v\n", msg)
-	if msg.Content == "error" {
-		return "", NewEvent[testMessage](ErrorLevelError, errors.New("test error"), nil)
+func (h *testHandler) Handle(ctx context.Context, env *Envelope[testMessage]) error {
+	if env.Message.Content == "error" {
+		return NewEvent[testMessage](ErrorLevelError, errors.New("test error"), nil)
 	}
-	fmt.Printf("Handler sending message to: %s\n", h.outChannelName)
-	return h.outChannelName, nil
+
+	env.OutChan = env.CurrentNode.OutputChans[h.outChannelName]
+	return nil
 }
 
 type testSupervisorHandler struct{}
 
-func (h *testSupervisorHandler) Handle(msg *testMessage) (string, error) {
-	return "supervised", nil
+func (h *testSupervisorHandler) Handle(ctx context.Context, _ *Envelope[testMessage]) error {
+	return nil
 }
 
 func randomString(n int) (string, error) {
@@ -60,7 +64,7 @@ func TestChaperone_EndToEnd(t *testing.T) {
 
 	fmt.Print("setting up graph\n")
 
-	graph := NewGraph[testMessage](ctx).
+	graph := NewGraph[testMessage](ctx, "graph", &Config{}).
 		AddSupervisor(SupervisorName, &testSupervisorHandler{}).
 		AddNode(SupervisorName, Node1Name, &testHandler{outChannelName: Node1Name + ":" + outputChannelName}).
 		AddNode(SupervisorName, Node2Name, &testHandler{outChannelName: Node2Name + ":" + outputChannelName}).
@@ -70,7 +74,7 @@ func TestChaperone_EndToEnd(t *testing.T) {
 		Start()
 
 	for _, node := range graph.Nodes {
-		fmt.Printf("Node: %+v\n", node.inputChans)
+		fmt.Printf("Node: %+v\n", node.InputChans)
 	}
 
 	for _, edge := range graph.Edges {
@@ -78,16 +82,16 @@ func TestChaperone_EndToEnd(t *testing.T) {
 	}
 
 	// Set up input and output channels for the nodes
-	inCh1 := graph.Nodes[Node1Name].inputChans[Node1Name+":"+inputChannelName]
+	inCh1 := graph.Nodes[Node1Name].InputChans[Node1Name+":"+inputChannelName]
 	fmt.Printf("Node1 input channel: %+v\n", inCh1)
-	outCh2 := graph.Nodes[Node2Name].outputChans[Node2Name+":"+outputChannelName].goChans[":final"]
+	outCh2 := graph.Nodes[Node2Name].OutputChans[Node2Name+":"+outputChannelName].GoChans[":final"]
 	fmt.Printf("Node2 output channel: %+v\n", outCh2)
 
 	// Send random messages to the input channel of node 1
 	msgContent, err := randomString(10)
 	assert.NoError(t, err)
-	msg := &testMessage{Content: msgContent}
-	env := &Envelope[testMessage]{message: msg, numRetries: 3}
+	msg := testMessage{Content: msgContent}
+	env := &Envelope[testMessage]{Message: msg, NumRetries: 3}
 	fmt.Printf("Sending message to Node1 input channel: %+v\n", env)
 	inCh1 <- env
 
@@ -95,23 +99,23 @@ func TestChaperone_EndToEnd(t *testing.T) {
 	select {
 	case received := <-outCh2:
 		fmt.Printf("Received message in node2 output channel: %+v\n", received)
-		assert.Equal(t, msg, received.message, "Expected to receive the same message in node2 input channel")
+		assert.Equal(t, msg, received.Message, "Expected to receive the same message in node2 input channel")
 	case <-time.After(1 * time.Second):
 		t.Error("Expected message in node2 output channel")
 	}
 
 	// Send a message that will cause an error
-	msgError := &testMessage{Content: "error"}
-	envError := &Envelope[testMessage]{message: msgError, numRetries: 3}
+	msgError := testMessage{Content: "error"}
+	envError := &Envelope[testMessage]{Message: msgError, NumRetries: 3}
 	fmt.Printf("Sending error message to Node1 input channel: %+v\n", envError)
 	inCh1 <- envError
 
 	// Verify that the error is handled and the message is sent to the event channel
 	select {
-	case ev := <-graph.Supervisors[SupervisorName].events:
+	case ev := <-graph.Supervisors[SupervisorName].Events:
 		assert.Equal(t, ErrorLevelError, ev.Level)
 		assert.Contains(t, ev.Event.Error(), "test error")
-		assert.Equal(t, msgError, ev.Message)
+		assert.Equal(t, msgError, ev.Envelope.Message)
 	case <-time.After(1 * time.Second):
 		t.Error("Timeout waiting for error event")
 	}
