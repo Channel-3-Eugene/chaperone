@@ -107,7 +107,7 @@ func TestSupervisor_RestartNode(t *testing.T) {
 		node.InputChans["input"] <- env
 		assert.Len(t, node.InputChans["input"], 1)
 
-		time.Sleep(20 * time.Microsecond)
+		time.Sleep(1 * time.Millisecond)
 		assert.Len(t, node.InputChans["input"], 0)
 		assert.Len(t, node.WorkerPool["input"], 3)
 
