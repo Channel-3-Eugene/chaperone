@@ -52,7 +52,7 @@ type Node[T Message] struct {
 	cancel        context.CancelCauseFunc
 	Name          string
 	Handler       Handler[T]
-	WorkerPool    map[string][]Worker[T] // Updated to map channels to workers
+	WorkerPool    map[string][]*Worker[T] // Updated to map channels to workers
 	WorkerCounter uint64
 
 	InputChans  map[string]chan *Envelope[T]

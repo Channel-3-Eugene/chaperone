@@ -70,7 +70,8 @@ func TestNode_StartStop(t *testing.T) {
 	assert.NotNil(t, node.WorkerPool["input"][0].ctx.Done())
 
 	// Stop the node
-	node.Stop()
+	evt := NewEvent[nodeTestMessage](ErrorLevelError, errors.New("test error"), nil)
+	node.Stop(evt)
 
 	// Give some time for the worker to stop
 	time.Sleep(100 * time.Millisecond)

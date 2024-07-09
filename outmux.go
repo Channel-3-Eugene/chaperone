@@ -33,13 +33,3 @@ func (o *OutMux[T]) Send(env *Envelope[T]) {
 		ch <- env
 	}
 }
-
-func (o *OutMux[T]) Stop() {
-	for k, ch := range o.OutChans {
-		if ch == nil {
-			continue
-		}
-		close(ch)
-		delete(o.OutChans, k)
-	}
-}

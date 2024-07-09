@@ -14,7 +14,7 @@ func NewNode[T Message](ctx context.Context, name string, handler Handler[T]) *N
 		cancel:      cancel,
 		Name:        name,
 		Handler:     handler,
-		WorkerPool:  make(map[string][]Worker[T]),
+		WorkerPool:  make(map[string][]*Worker[T]),
 		InputChans:  make(map[string]chan *Envelope[T]),
 		OutputChans: make(map[string]*OutMux[T]),
 		EventChan:   make(chan *Event[T]),
@@ -27,13 +27,13 @@ func (n *Node[T]) AddWorkers(channelName string, num int, name string) {
 	}
 
 	if n.WorkerPool == nil {
-		n.WorkerPool = make(map[string][]Worker[T])
+		n.WorkerPool = make(map[string][]*Worker[T])
 	}
 
 	for i := 0; i < num; i++ {
 		numWorker := atomic.AddUint64(&n.WorkerCounter, 1)
-		worker := Worker[T]{
-			name:    fmt.Sprintf("%s-%d", name, numWorker),
+		worker := &Worker[T]{
+			name:    fmt.Sprintf("%s-%s-%d", channelName, name, numWorker),
 			handler: n.Handler,
 			ctx:     n.ctx,
 			channel: n.InputChans[channelName], // Associate worker with the specific channel
@@ -56,6 +56,8 @@ func (n *Node[T]) AddOutputChannel(muxName, channelName string, ch chan *Envelop
 }
 
 func (n *Node[T]) Start() {
+	fmt.Printf("Starting node %s\n", n.Name)
+
 	for _, workers := range n.WorkerPool {
 		for _, worker := range workers {
 			go n.startWorker(worker)
@@ -63,54 +65,75 @@ func (n *Node[T]) Start() {
 	}
 }
 
-func (n *Node[T]) startWorker(w Worker[T]) {
+func (n *Node[T]) startWorker(w *Worker[T]) {
 	defer func() {
 		if r := recover(); r != nil {
 			switch x := r.(type) {
 			case *Envelope[T]:
 				err := NewEvent(ErrorLevelCritical, fmt.Errorf("worker %s panicked", w.name), x)
-				n.handleWorkerEvent(&w, err, x)
+				n.handleWorkerEvent(w, err, x)
 			case runtime.Error:
 				err := NewEvent[T](ErrorLevelCritical, fmt.Errorf("worker %s panicked: %#v", w.name, x), nil)
-				n.handleWorkerEvent(&w, err, nil)
+				n.handleWorkerEvent(w, err, nil)
 			default:
 				err := NewEvent[T](ErrorLevelCritical, fmt.Errorf("worker %s panicked: %#v", w.name, x), nil)
-				n.handleWorkerEvent(&w, err, nil)
+				n.handleWorkerEvent(w, err, nil)
 			}
 		}
 	}()
 
+	fmt.Printf("Starting worker %s\n", w.name)
+
 	for {
 		select {
 		case <-w.ctx.Done():
+			fmt.Printf("Stopping worker %s\n", w.name)
 			return
 		case env, ok := <-w.channel:
 			if !ok {
 				// Channel closed
 				return
 			}
-			env.Receive(n, w.channel)
-			err := w.handler.Handle(n.ctx, env)
 
+			fmt.Printf("Worker %s received message %v\n", w.name, env)
+
+			env.Receive(n, w.channel)
+
+			err := w.handler.Handle(n.ctx, env)
 			if err != nil {
 				fmt.Printf("Worker %s encountered error: %v\n", w.name, err)
 				newErr := NewEvent(ErrorLevelError, err, env)
-				n.handleWorkerEvent(&w, newErr, env)
+				n.handleWorkerEvent(w, newErr, env)
 			} else if mux := env.OutChan; mux != nil {
 				mux.Send(env)
 			} else {
 				err := NewEvent(ErrorLevelError, fmt.Errorf("output channel not found"), env)
-				n.handleWorkerEvent(&w, err, env)
+				n.handleWorkerEvent(w, err, env)
 			}
 		}
 	}
 }
 
-func (n *Node[T]) Stop() {
-	n.cancel(NewEvent[T](ErrorLevelInfo, fmt.Errorf("stopping node %s", n.Name), nil))
-	for _, mux := range n.OutputChans {
-		mux.Stop()
+func (n *Node[T]) StopWorkers() {
+	for _, workers := range n.WorkerPool {
+		for _, worker := range workers {
+			worker.ctx.Done()
+		}
 	}
+}
+
+func (n *Node[T]) RestartWorkers() {
+	n.StopWorkers()
+	n.Start()
+}
+
+func (n *Node[T]) Stop(evt *Event[T]) {
+	n.cancel(*evt)
+}
+
+func (n *Node[T]) Restart(evt *Event[T]) {
+	n.Stop(evt)
+	n.Start()
 }
 
 func (n *Node[T]) handleWorkerEvent(_ *Worker[T], ev *Event[T], env *Envelope[T]) {

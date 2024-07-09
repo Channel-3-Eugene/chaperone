@@ -50,15 +50,17 @@ func (s *Supervisor[T]) Start() {
 
 		for {
 			select {
-			case event := <-s.Parent.Events:
+			case event := <-s.Events:
 				switch event.Level {
 				case ErrorLevelCritical:
 					fmt.Printf("Critical error: %#v\n", event.Envelope.Message) // TODO: replace with logging
 					panic(event)
 				case ErrorLevelWarning:
 					fmt.Printf("Warning: %#v\n", event.Envelope.Message)
+					s.handleSupervisorEvent(event)
 				case ErrorLevelInfo:
 					fmt.Printf("Info: %#v`\n", event.Envelope.Message)
+					s.handleSupervisorEvent(event)
 				}
 			case <-s.ctx.Done():
 				return
@@ -78,8 +80,12 @@ func (s *Supervisor[T]) Start() {
 }
 
 func (s *Supervisor[T]) handleSupervisorEvent(ev *Event[T]) {
-	if s.Parent.Events != nil && ev.Level >= ErrorLevelError {
+	if ev.Level >= ErrorLevelError && s.Parent != nil && s.Parent.Events != nil {
 		s.Parent.Events <- ev
+	}
+	if ev.Level == ErrorLevelCritical {
+		fmt.Println("Critical error encountered, restarting node workers.")
+		ev.Envelope.CurrentNode.RestartWorkers()
 	}
 }
 
@@ -91,7 +97,7 @@ func (s *Supervisor[T]) Stop() {
 	}
 
 	for _, node := range s.Nodes {
-		node.Stop()
+		node.Stop(ev)
 	}
 
 	if s.Parent.Events != nil {
