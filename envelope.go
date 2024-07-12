@@ -7,3 +7,7 @@ func NewEnvelope[T Message](message T, numRetries int) *Envelope[T] {
 		Metadata:   make(map[string]interface{}),
 	}
 }
+
+func (e *Envelope[T]) String() string {
+	return e.Message.String()
+}

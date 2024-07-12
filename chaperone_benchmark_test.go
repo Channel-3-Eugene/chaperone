@@ -30,8 +30,8 @@ func (h *benchmarkHandler) Start(context.Context) error {
 	return nil
 }
 
-func (h *benchmarkHandler) Handle(_ context.Context, env *Envelope[benchmarkMessage]) (*Envelope[benchmarkMessage], error) {
-	if env.Message.String() == "error" {
+func (h *benchmarkHandler) Handle(_ context.Context, env Message) (Message, error) {
+	if env.String() == "error" {
 		return nil, errors.New("test error")
 	}
 
@@ -44,7 +44,7 @@ func (h *benchmarkSupervisorHandler) Start(context.Context) error {
 	return nil
 }
 
-func (h *benchmarkSupervisorHandler) Handle(_ context.Context, _ *Event[benchmarkMessage, benchmarkMessage]) error {
+func (h *benchmarkSupervisorHandler) Handle(_ context.Context, _ Message) error {
 	return nil
 }
 
@@ -56,26 +56,26 @@ func BenchmarkGraph(b *testing.B) {
 	totalMessages := 5_965_232
 
 	SupervisorName := "supervisor1"
-	Supervisor := NewSupervisor[benchmarkMessage, benchmarkMessage](ctx, SupervisorName, &benchmarkSupervisorHandler{})
+	Supervisor := NewSupervisor(ctx, SupervisorName, &benchmarkSupervisorHandler{})
 	Node1Name := "node1"
 	Node1 := NewNode[benchmarkMessage, benchmarkMessage](ctx, Node1Name, &benchmarkHandler{outChannelName: "out1"})
-	Edge0 := NewEdge[benchmarkMessage, benchmarkMessage, benchmarkMessage]("in", nil, Node1, bufferSize, numWorkers)
+	Edge0 := NewEdge("in", nil, Node1, bufferSize, numWorkers)
 	Node2Name := "node2"
 	Node2 := NewNode[benchmarkMessage, benchmarkMessage](ctx, Node2Name, &benchmarkHandler{outChannelName: "out2"})
-	Edge1 := NewEdge[benchmarkMessage, benchmarkMessage, benchmarkMessage]("out1", Node1, Node2, bufferSize, numWorkers)
+	Edge1 := NewEdge("out1", Node1, Node2, bufferSize, numWorkers)
 	Node3Name := "node3"
 	Node3 := NewNode[benchmarkMessage, benchmarkMessage](ctx, Node3Name, &benchmarkHandler{outChannelName: "out3"})
-	Edge2 := NewEdge[benchmarkMessage, benchmarkMessage, benchmarkMessage]("out2", Node2, Node3, bufferSize, numWorkers)
+	Edge2 := NewEdge("out2", Node2, Node3, bufferSize, numWorkers)
 	Node4Name := "node4"
 	Node4 := NewNode[benchmarkMessage, benchmarkMessage](ctx, Node4Name, &benchmarkHandler{outChannelName: "out4"})
-	Edge3 := NewEdge[benchmarkMessage, benchmarkMessage, benchmarkMessage]("out3", Node3, Node4, bufferSize, numWorkers)
+	Edge3 := NewEdge("out3", Node3, Node4, bufferSize, numWorkers)
 	Node5Name := "node5"
 	Node5 := NewNode[benchmarkMessage, benchmarkMessage](ctx, Node5Name, &benchmarkHandler{outChannelName: "out"})
-	Edge4 := NewEdge[benchmarkMessage, benchmarkMessage, benchmarkMessage]("out4", Node4, Node5, bufferSize, numWorkers)
-	Edge5 := NewEdge[benchmarkMessage, benchmarkMessage, benchmarkMessage]("out", Node5, nil, bufferSize, numWorkers)
+	Edge4 := NewEdge("out4", Node4, Node5, bufferSize, numWorkers)
+	Edge5 := NewEdge("out", Node5, nil, bufferSize, numWorkers)
 
 	graph := NewGraph(ctx, "graph", &Config{}).
-		AddSupervisor(Supervisor).
+		AddSupervisor(nil, Supervisor).
 		AddEdge(Edge0).
 		AddNode(Node1).
 		AddEdge(Edge1).
@@ -103,22 +103,21 @@ func BenchmarkGraph(b *testing.B) {
 			msg := benchmarkMessage{}
 			msg.SetContent("test message")
 			env := &Envelope[benchmarkMessage]{Message: msg}
-			Edge0.Channel <- env
+			Edge0.GetChannel() <- env
 			sendCount++
 		}
 	}()
 
 	doneCount := 0
-	for range Edge5.Channel {
+	for range Edge5.GetChannel() {
 		doneCount++
 		wg.Done()
 		if doneCount == totalMessages {
 			break
 		}
 		for _, edge := range graph.Edges {
-			e := edge.(*Edge[benchmarkMessage])
-			if len(e.Channel) == cap(e.Channel) {
-				fmt.Printf("Buffer for channel %s full: %d\n", e.name, len(e.Channel))
+			if len(edge.GetChannel()) == cap(edge.GetChannel()) {
+				fmt.Printf("Buffer for channel %s full: %d\n", edge.Name(), len(edge.GetChannel()))
 			}
 		}
 	}

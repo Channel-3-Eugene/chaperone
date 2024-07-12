@@ -2,18 +2,40 @@ package chaperone
 
 import "fmt"
 
-func NewEdge[FNI, FNOTNI, TNO Message](name string, fn *Node[FNI, FNOTNI], tn *Node[FNOTNI, TNO], bufferSize int, numWorkers int) *Edge[FNOTNI] {
-	edge := &Edge[FNOTNI]{
+func NewEdge(name string, fn EnvelopeWorker, tn EnvelopeWorker, bufferSize int, numWorkers int) *Edge {
+	fmt.Printf("Creating edge on node %#v\n\n", fn)
+	edge := &Edge{
 		name:    name,
-		Channel: make(chan *Envelope[FNOTNI], bufferSize),
+		channel: make(chan Message, bufferSize),
 	}
 
 	// Set up the output channel on the fromNode
-	fn.AddOutput(edge)
+	if fn != nil {
+		fn.AddOutput(edge)
+	}
 
 	// Set up the input channel and workers on the toNode
-	tn.AddInput(name, edge)
-	tn.AddWorkers(edge, numWorkers, fmt.Sprintf("%s-worker", name))
+	if tn != nil {
+		tn.AddInput(name, edge)
+		tn.AddWorkers(edge, numWorkers, fmt.Sprintf("%s-worker", name))
+	}
 
 	return edge
+}
+
+func (e Edge) Name() string {
+	return e.name
+}
+
+func (e Edge) GetChannel() chan Message {
+	return e.channel
+}
+
+func (e Edge) SetChannel(c chan Message) {
+	e.channel = c
+}
+
+func (e Edge) Send(env Message) error {
+	e.channel <- env
+	return nil
 }

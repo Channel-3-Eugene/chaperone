@@ -33,8 +33,8 @@ func (h *profileHandler) Start(context.Context) error {
 	return nil
 }
 
-func (h *profileHandler) Handle(_ context.Context, env *Envelope[profileMessage]) (*Envelope[profileMessage], error) {
-	if env.Message.String() == "error" {
+func (h *profileHandler) Handle(_ context.Context, env Message) (Message, error) {
+	if env.String() == "error" {
 		return nil, errors.New("test error")
 	}
 
@@ -47,7 +47,7 @@ func (h *profileSupervisorHandler) Start(context.Context) error {
 	return nil
 }
 
-func (h *profileSupervisorHandler) Handle(_ context.Context, evt *Event[profileMessage, profileMessage]) error {
+func (h *profileSupervisorHandler) Handle(_ context.Context, evt Message) error {
 	return nil
 }
 
@@ -83,26 +83,26 @@ func TestProfilingGraph(t *testing.T) {
 	totalMessages := 5_965_232
 
 	SupervisorName := "supervisor1"
-	Supervisor := NewSupervisor[profileMessage, profileMessage](ctx, SupervisorName, &profileSupervisorHandler{})
+	Supervisor := NewSupervisor(ctx, SupervisorName, &profileSupervisorHandler{})
 	Node1Name := "node1"
 	Node1 := NewNode[profileMessage, profileMessage](ctx, Node1Name, &profileHandler{outChannelName: "out1"})
-	Edge0 := NewEdge[profileMessage, profileMessage, profileMessage]("in", nil, Node1, bufferSize, numWorkers)
+	Edge0 := NewEdge("in", nil, Node1, bufferSize, numWorkers)
 	Node2Name := "node2"
 	Node2 := NewNode[profileMessage, profileMessage](ctx, Node2Name, &profileHandler{outChannelName: "out2"})
-	Edge1 := NewEdge[profileMessage, profileMessage, profileMessage]("out1", Node1, Node2, bufferSize, numWorkers)
+	Edge1 := NewEdge("out1", Node1, Node2, bufferSize, numWorkers)
 	Node3Name := "node3"
 	Node3 := NewNode[profileMessage, profileMessage](ctx, Node3Name, &profileHandler{outChannelName: "out3"})
-	Edge2 := NewEdge[profileMessage, profileMessage, profileMessage]("out2", Node2, Node3, bufferSize, numWorkers)
+	Edge2 := NewEdge("out2", Node2, Node3, bufferSize, numWorkers)
 	Node4Name := "node4"
 	Node4 := NewNode[profileMessage, profileMessage](ctx, Node4Name, &profileHandler{outChannelName: "out4"})
-	Edge3 := NewEdge[profileMessage, profileMessage, profileMessage]("out3", Node3, Node4, bufferSize, numWorkers)
+	Edge3 := NewEdge("out3", Node3, Node4, bufferSize, numWorkers)
 	Node5Name := "node5"
 	Node5 := NewNode[profileMessage, profileMessage](ctx, Node5Name, &profileHandler{outChannelName: "out"})
-	Edge4 := NewEdge[profileMessage, profileMessage, profileMessage]("out4", Node4, Node5, bufferSize, numWorkers)
-	Edge5 := NewEdge[profileMessage, profileMessage, profileMessage]("out", Node5, nil, bufferSize, numWorkers)
+	Edge4 := NewEdge("out4", Node4, Node5, bufferSize, numWorkers)
+	Edge5 := NewEdge("out", Node5, nil, bufferSize, numWorkers)
 
 	graph := NewGraph(ctx, "graph", &Config{}).
-		AddSupervisor(Supervisor).
+		AddSupervisor(nil, Supervisor).
 		AddEdge(Edge0).
 		AddNode(Node1).
 		AddEdge(Edge1).
@@ -130,22 +130,21 @@ func TestProfilingGraph(t *testing.T) {
 			msg := profileMessage{}
 			msg.SetContent("test message")
 			env := &Envelope[profileMessage]{Message: msg}
-			Edge0.Channel <- env
+			Edge0.GetChannel() <- env
 			sendCount++
 		}
 	}()
 
 	doneCount := 0
-	for range Edge5.Channel {
+	for range Edge5.GetChannel() {
 		doneCount++
 		wg.Done()
 		if doneCount == totalMessages {
 			break
 		}
 		for _, edge := range graph.Edges {
-			e := edge.(*Edge[profileMessage])
-			if len(e.Channel) == cap(e.Channel) {
-				fmt.Printf("Buffer for channel %s full: %d\n", e.name, len(e.Channel))
+			if len(edge.GetChannel()) == cap(edge.GetChannel()) {
+				fmt.Printf("Buffer for channel %s full: %d\n", edge.Name(), len(edge.GetChannel()))
 			}
 		}
 	}

@@ -24,8 +24,8 @@ func (h *nodeTestHandler) Start(context.Context) error {
 	return nil
 }
 
-func (h *nodeTestHandler) Handle(_ context.Context, env *Envelope[nodeTestMessage]) (*Envelope[nodeTestMessage], error) {
-	if env.Message.Content == "error" {
+func (h *nodeTestHandler) Handle(_ context.Context, env Message) (Message, error) {
+	if env.String() == "error" {
 		return nil, errors.New("test error")
 	}
 	return env, nil
@@ -46,7 +46,7 @@ func TestNode_AddWorkers(t *testing.T) {
 	handler := &nodeTestHandler{}
 	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler)
 
-	inEdge := NewEdge[nodeTestMessage, nodeTestMessage]("test input", nil, node, 10, 1)
+	inEdge := NewEdge("test input", nil, node, 10, 1)
 	node.AddInput("input", inEdge)
 	node.AddWorkers(inEdge, 2, "worker")
 
@@ -61,7 +61,7 @@ func TestNode_StartStop(t *testing.T) {
 	handler := &nodeTestHandler{}
 	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler)
 
-	inEdge := NewEdge[nodeTestMessage, nodeTestMessage]("test input", nil, node, 10, 1)
+	inEdge := NewEdge("test input", nil, node, 10, 1)
 	node.AddInput("input", inEdge)
 	node.AddWorkers(inEdge, 1, "worker")
 	node.Start()
@@ -73,7 +73,7 @@ func TestNode_StartStop(t *testing.T) {
 	assert.NotNil(t, node.WorkerPool["input"][0].ctx.Done())
 
 	// Stop the node
-	evt := NewEvent[nodeTestMessage, nodeTestMessage](ErrorLevelError, errors.New("test error"), nil)
+	evt := NewEvent(ErrorLevelError, errors.New("test error"), nil)
 	node.Stop(evt)
 
 	// Give some time for the worker to stop
@@ -88,9 +88,9 @@ func TestNode_WorkerHandlesMessage(t *testing.T) {
 	handler := &nodeTestHandler{}
 	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler)
 
-	inEdge := NewEdge[nodeTestMessage, nodeTestMessage]("test input", nil, node, 10, 1)
+	inEdge := NewEdge("test input", nil, node, 10, 1)
 	node.AddInput("input", inEdge)
-	outEdge := NewEdge[nodeTestMessage, nodeTestMessage, nodeTestMessage]("test output", node, nil, 10, 1)
+	outEdge := NewEdge("test output", node, nil, 10, 1)
 	node.AddOutput(outEdge)
 
 	node.AddWorkers(inEdge, 1, "worker")
@@ -99,23 +99,23 @@ func TestNode_WorkerHandlesMessage(t *testing.T) {
 	// Send a message to the input channel
 	msg := nodeTestMessage{Content: "test", Mux: "outMux"}
 	env := &Envelope[nodeTestMessage]{Message: msg, NumRetries: 3}
-	inEdge.Channel <- env
+	inEdge.GetChannel() <- env
 
 	// Give some time for the worker to process the message
 	time.Sleep(100 * time.Millisecond)
 
 	// Check if the message was sent to the output channel
-	received := <-outEdge.Channel
-	assert.Equal(t, msg, received.Message)
+	received := <-outEdge.GetChannel()
+	assert.Equal(t, msg.String(), received.String())
 }
 
 func TestNode_WorkerHandlesError(t *testing.T) {
 	handler := &nodeTestHandler{}
 	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler)
 
-	inEdge := NewEdge[nodeTestMessage, nodeTestMessage]("test input", nil, node, 10, 1)
+	inEdge := NewEdge("test input", nil, node, 10, 1)
 	node.AddInput("input", inEdge)
-	node.Events = make(chan *Event[nodeTestMessage, nodeTestMessage], 1)
+	node.Events = NewEdge("test events", nil, node, 10, 1)
 
 	node.AddWorkers(inEdge, 1, "worker")
 	node.Start()
@@ -123,23 +123,25 @@ func TestNode_WorkerHandlesError(t *testing.T) {
 	// Send a message that will cause an error
 	msg := nodeTestMessage{Content: "error"}
 	env := &Envelope[nodeTestMessage]{Message: msg, NumRetries: 3}
-	inEdge.Channel <- env
+	inEdge.GetChannel() <- env
 
 	// Give some time for the worker to process the message
 	time.Sleep(100 * time.Millisecond)
 
 	// Check if an event was sent to the event channel
-	ev := <-node.Events
-	assert.Equal(t, ErrorLevelError, ev.Level)
-	assert.Equal(t, "test error", ev.Event.Error())
-	assert.Equal(t, msg, ev.Envelope.Message)
+	evt := <-node.Events.GetChannel()
+	ev, ok := evt.(*Event)
+	assert.True(t, ok)
+	assert.Equal(t, ErrorLevelError, ev.Level())
+	assert.Equal(t, "test error", ev.Error())
+	assert.Equal(t, msg.String(), ev.String())
 }
 
 func TestNode_RestartWorkers(t *testing.T) {
 	handler := &nodeTestHandler{}
 	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler)
 
-	inEdge := NewEdge[nodeTestMessage, nodeTestMessage]("test input", nil, node, 10, 1)
+	inEdge := NewEdge("test input", nil, node, 10, 1)
 	node.AddInput("input", inEdge)
 	node.AddWorkers(inEdge, 2, "worker")
 

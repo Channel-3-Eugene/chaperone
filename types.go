@@ -4,15 +4,15 @@ import (
 	"context"
 )
 
-type Message interface {
+type Message interface { // Envelope or Payload
 	String() string
 }
 
-type Event[In, Out Message] struct {
-	Level    ErrorLevel
-	Event    error
-	Envelope *Envelope[In]
-	Node     *Node[In, Out]
+type Event struct {
+	level    ErrorLevel
+	event    error
+	envelope Message
+	node     EnvelopeWorker
 	Worker   string
 }
 
@@ -22,56 +22,83 @@ type Envelope[T Message] struct {
 	Metadata   map[string]interface{}
 }
 
-type EnvHandler[In, Out Message] interface {
+type EnvHandler interface {
 	Start(ctx context.Context) error
-	Handle(ctx context.Context, env *Envelope[In]) (*Envelope[Out], error)
+	Handle(ctx context.Context, env Message) (Message, error)
 }
 
-type EvtHandler[In, Out Message] interface {
+type EvtHandler interface {
 	Start(ctx context.Context) error
-	Handle(ctx context.Context, evt *Event[In, Out]) error
+	Handle(ctx context.Context, evt Message) error
 }
 
-type Worker[In, Out Message] struct {
-	ctx     context.Context
+type Worker struct {
+	ctx       context.Context
+	name      string
+	handler   EnvHandler
+	listening MessageCarrier // Each worker listens to a specific channel
+}
+
+type MessageCarrier interface { // Edge
+	Name() string
+	Send(env Message) error
+	GetChannel() chan Message
+	SetChannel(chan Message)
+}
+
+type Edge struct {
 	name    string
-	handler EnvHandler[In, Out]
-	channel *Edge[In] // Each worker listens to a specific channel
+	channel chan Message
 }
 
-type Edge[T Message] struct {
-	name    string
-	Channel chan *Envelope[T]
-}
-
-type OutMux[T Message] struct {
+type OutMux struct {
 	Name     string
-	OutChans map[string]*Edge[T]
-	GoChans  map[string]*Edge[T]
+	OutChans map[string]MessageCarrier
+	GoChans  map[string]MessageCarrier
+}
+
+type EnvelopeWorker interface { // Node
+	Name() string
+	AddOutput(MessageCarrier)
+	AddInput(string, MessageCarrier)
+	AddWorkers(MessageCarrier, int, string)
+	SetEvents(MessageCarrier)
+	Start()
+	RestartWorkers()
+	Stop(*Event)
 }
 
 type Node[In, Out Message] struct {
 	ctx           context.Context
 	cancel        context.CancelFunc
-	Name          string
-	Handler       EnvHandler[In, Out]
-	WorkerPool    map[string][]*Worker[In, Out] // Updated to map channels to workers
+	name          string
+	Handler       EnvHandler
+	WorkerPool    map[string][]*Worker // Updated to map channels to workers
 	WorkerCounter uint64
 
-	In     map[string]*Edge[In]
-	Out    *OutMux[Out]
-	Events chan *Event[In, Out]
+	In     map[string]MessageCarrier
+	Out    OutMux
+	Events MessageCarrier
 }
 
-type Supervisor[In, Out Message] struct {
-	ctx         context.Context
-	cancel      context.CancelFunc
-	Name        string
-	Parent      *Supervisor[In, Out]
-	Events      chan *Event[In, Out]
-	Supervisors map[string]*Supervisor[In, Out]
-	Nodes       map[string]*Node[In, Out]
-	Handler     EvtHandler[In, Out]
+type EventWorker interface { // Supervisor
+	Name() string
+	AddChildSupervisor(EventWorker)
+	AddNode(EnvelopeWorker)
+	SetEvents(MessageCarrier)
+	Start()
+	Stop()
+}
+
+type Supervisor struct {
+	ctx          context.Context
+	cancel       context.CancelFunc
+	name         string
+	Events       MessageCarrier
+	ParentEvents MessageCarrier
+	Supervisors  map[string]EventWorker
+	Nodes        map[string]EnvelopeWorker
+	Handler      EvtHandler
 }
 
 type Config struct {
@@ -79,11 +106,10 @@ type Config struct {
 }
 
 type Graph struct {
-	Config      *Config
 	ctx         context.Context
 	cancel      context.CancelFunc
 	Name        string
-	Supervisors map[string]interface{}
-	Nodes       map[string]interface{}
-	Edges       []interface{}
+	Supervisors map[string]EventWorker
+	Nodes       map[string]EnvelopeWorker
+	Edges       []MessageCarrier
 }

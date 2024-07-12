@@ -1,39 +1,39 @@
 package chaperone
 
-func NewOutMux[Out Message](name string) *OutMux[Out] {
-	return &OutMux[Out]{
+func NewOutMux(name string) OutMux {
+	return OutMux{
 		Name:     name,
-		OutChans: make(map[string]*Edge[Out]),
-		GoChans:  make(map[string]*Edge[Out]),
+		OutChans: make(map[string]MessageCarrier),
+		GoChans:  make(map[string]MessageCarrier),
 	}
 }
 
-func (o *OutMux[Out]) AddChannel(edge *Edge[Out]) {
+func (o *OutMux) AddChannel(edge MessageCarrier) {
 	// Create a new output channel and goroutine for the edge.
 	outChan := edge
-	goChan := &Edge[Out]{
-		name:    "go-" + edge.name,
-		Channel: make(chan *Envelope[Out], cap(edge.Channel)),
+	goChan := &Edge{
+		name:    "go-" + edge.Name(),
+		channel: make(chan Message, cap(edge.GetChannel())),
 	}
 
-	go func(in, out *Edge[Out]) {
-		for env := range in.Channel {
-			out.Channel <- env // Send the envelope to the output channel.
+	go func(in, out MessageCarrier) {
+		for env := range in.GetChannel() {
+			out.GetChannel() <- env // Send the envelope to the output channel.
 		}
-		close(out.Channel) // Close the output channel when the input channel is closed.
+		close(out.GetChannel()) // Close the output channel when the input channel is closed.
 	}(outChan, goChan)
 
-	o.OutChans[outChan.name] = outChan
-	o.GoChans[goChan.name] = goChan
+	o.OutChans[outChan.Name()] = outChan
+	o.GoChans[goChan.Name()] = goChan
 }
 
-func (o *OutMux[Out]) Send(env *Envelope[Out]) {
+func (o *OutMux) Send(env Message) {
 	for name, edge := range o.OutChans {
 		if edge == nil {
 			delete(o.OutChans, name)
 			delete(o.GoChans, name)
 			continue
 		}
-		edge.Channel <- env
+		edge.Send(env)
 	}
 }
