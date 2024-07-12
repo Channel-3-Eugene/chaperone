@@ -24,18 +24,25 @@ type testHandler struct {
 	outChannelName string
 }
 
-func (h *testHandler) Handle(ctx context.Context, env *Envelope[testMessage]) error {
+func (h *testHandler) Start(context.Context) error {
+	return nil
+}
+
+func (h *testHandler) Handle(ctx context.Context, env *Envelope[testMessage]) (*Envelope[testMessage], error) {
 	if env.Message.Content == "error" {
-		return NewEvent[testMessage](ErrorLevelError, errors.New("test error"), nil)
+		return nil, NewEvent[testMessage, testMessage](ErrorLevelError, errors.New("test error"), env)
 	}
 
-	env.OutChan = env.CurrentNode.OutputChans[h.outChannelName]
-	return nil
+	return env, nil
 }
 
 type testSupervisorHandler struct{}
 
-func (h *testSupervisorHandler) Handle(ctx context.Context, _ *Envelope[testMessage]) error {
+func (h *testSupervisorHandler) Start(context.Context) error {
+	return nil
+}
+
+func (h *testSupervisorHandler) Handle(ctx context.Context, evt *Event[testMessage, testMessage]) error {
 	return nil
 }
 
@@ -57,37 +64,28 @@ func TestChaperone_EndToEnd(t *testing.T) {
 	ctx := context.Background()
 
 	ParentSupervisorName := "parent supervisor"
+	ParentSupervisor := NewSupervisor[testMessage, testMessage](ctx, ParentSupervisorName, &testSupervisorHandler{})
 	ChildSupervisorName := "child supervisor"
+	ChildSupervisor := NewSupervisor[testMessage, testMessage](ctx, ChildSupervisorName, &testSupervisorHandler{})
 	Node1Name := "node1"
+	Node1 := NewNode[testMessage, testMessage](ctx, Node1Name, &testHandler{outChannelName: "middle"})
+	startEdge := NewEdge[testMessage, testMessage, testMessage]("start", nil, Node1, 10, 1)
 	Node2Name := "node2"
-	inputChannelName := "input"
-	outputChannelName := "output"
+	Node2 := NewNode[testMessage, testMessage](ctx, Node2Name, &testHandler{outChannelName: "end"})
+	middleEdge := NewEdge[testMessage, testMessage, testMessage]("middle", Node1, Node2, 10, 1)
+	endEdge := NewEdge[testMessage, testMessage, testMessage]("end", Node2, nil, 10, 1)
 
 	fmt.Print("setting up graph\n")
 
-	graph := NewGraph[testMessage](ctx, "graph", &Config{}).
-		AddSupervisor(nil, ParentSupervisorName, &testSupervisorHandler{}).
-		AddSupervisor(&ParentSupervisorName, ChildSupervisorName, &testSupervisorHandler{}).
-		AddNode(ChildSupervisorName, Node1Name, &testHandler{outChannelName: Node1Name + ":" + outputChannelName}).
-		AddNode(ChildSupervisorName, Node2Name, &testHandler{outChannelName: Node2Name + ":" + outputChannelName}).
-		AddEdge("", "start", Node1Name, inputChannelName, 10, 1).
-		AddEdge(Node1Name, outputChannelName, Node2Name, inputChannelName, 10, 1).
-		AddEdge(Node2Name, outputChannelName, "", "final", 10, 1).
+	graph := NewGraph(ctx, "graph", &Config{}).
+		AddSupervisor(nil, ParentSupervisor).
+		AddSupervisor(ParentSupervisor, ChildSupervisor).
+		AddEdge(startEdge).
+		AddNode(Node1).
+		AddEdge(middleEdge).
+		AddNode(Node2).
+		AddEdge(endEdge).
 		Start()
-
-	for _, node := range graph.Nodes {
-		fmt.Printf("Node: %+v\n", node.InputChans)
-	}
-
-	for _, edge := range graph.Edges {
-		fmt.Printf("Edge: %+v\n", edge)
-	}
-
-	// Set up input and output channels for the nodes
-	inCh1 := graph.Nodes[Node1Name].InputChans[Node1Name+":"+inputChannelName]
-	fmt.Printf("Node1 input channel: %+v\n", inCh1)
-	outCh2 := graph.Nodes[Node2Name].OutputChans[Node2Name+":"+outputChannelName].GoChans[":final"]
-	fmt.Printf("Node2 output channel: %+v\n", outCh2)
 
 	// Send random messages to the input channel of node 1
 	msgContent, err := randomString(10)
@@ -95,11 +93,11 @@ func TestChaperone_EndToEnd(t *testing.T) {
 	msg := testMessage{Content: msgContent}
 	env := &Envelope[testMessage]{Message: msg, NumRetries: 3}
 	fmt.Printf("Sending message to Node1 input channel: %+v\n", env)
-	inCh1 <- env
+	startEdge.Channel <- env
 
 	// Verify that the messages sent to node1 exits node2
 	select {
-	case received := <-outCh2:
+	case received := <-endEdge.Channel:
 		fmt.Printf("Received message in node2 output channel: %+v\n", received)
 		assert.Equal(t, msg, received.Message, "Expected to receive the same message in node2 input channel")
 	case <-time.After(1 * time.Second):
@@ -110,11 +108,11 @@ func TestChaperone_EndToEnd(t *testing.T) {
 	msgError := testMessage{Content: "error"}
 	envError := &Envelope[testMessage]{Message: msgError, NumRetries: 3}
 	fmt.Printf("Sending error message to Node1 input channel: %+v\n", envError)
-	inCh1 <- envError
+	startEdge.Channel <- envError
 
 	// Verify that the error is handled and the message is sent to the event channel
 	select {
-	case ev := <-graph.Supervisors[ChildSupervisorName].Events:
+	case ev := <-graph.Supervisors[ChildSupervisorName].(*Supervisor[testMessage, testMessage]).Events:
 		assert.Equal(t, ErrorLevelError, ev.Level)
 		assert.Contains(t, ev.Event.Error(), "test error")
 		assert.Equal(t, msgError, ev.Envelope.Message)

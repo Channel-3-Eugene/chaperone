@@ -24,12 +24,12 @@ const (
 
 const DefaultErrorLevel = ErrorLevelInfo
 
-func NewEvent[T Message](level ErrorLevel, err error, env *Envelope[T]) *Event[T] {
+func NewEvent[In, Out Message](level ErrorLevel, err error, env *Envelope[In]) *Event[In, Out] {
 	if level == ErrorLevelDefault {
 		level = DefaultErrorLevel
 	}
 
-	return &Event[T]{
+	return &Event[In, Out]{
 		Level:    level,
 		Event:    err,
 		Envelope: env,
@@ -37,15 +37,15 @@ func NewEvent[T Message](level ErrorLevel, err error, env *Envelope[T]) *Event[T
 }
 
 // Error implements the error interface.
-func (e Event[T]) Error() string {
+func (e Event[In, Out]) Error() string {
 	if e.Event != nil {
 		return fmt.Sprintf("[%s] %s", e.Level.Level(), e.Event)
 	}
 	return fmt.Sprintf("[%s] %s", e.Level.Level(), e.Envelope.Message.String())
 }
 
-func (e *Event[T]) Wrap(err error) *Event[T] {
-	return &Event[T]{
+func (e *Event[In, Out]) Wrap(err error) *Event[In, Out] {
+	return &Event[In, Out]{
 		Level:    e.Level,
 		Event:    err,
 		Envelope: e.Envelope,
@@ -54,7 +54,7 @@ func (e *Event[T]) Wrap(err error) *Event[T] {
 }
 
 // Unwrap returns the underlying error.
-func (e *Event[T]) Unwrap() error {
+func (e *Event[In, Out]) Unwrap() error {
 	return e.Event
 }
 

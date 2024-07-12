@@ -19,38 +19,39 @@ func (s supervisorNodeTestMessage) String() string {
 
 type supervisorNodeHandler struct{}
 
-func (h supervisorNodeHandler) Handle(ctx context.Context, env *Envelope[supervisorNodeTestMessage]) error {
-	if env.Message.Content == "error" {
-		env.OutChan = nil
-		evt := NewEvent(ErrorLevelCritical, errors.New("test error"), env)
-		env.Event = evt
-		return evt
-	}
-
-	env.OutChan = env.CurrentNode.OutputChans["output"]
+func (h supervisorNodeHandler) Start(ctx context.Context) error {
 	return nil
 }
 
-type supervisorHandler struct {
+func (h supervisorNodeHandler) Handle(ctx context.Context, env *Envelope[supervisorNodeTestMessage]) (*Envelope[supervisorNodeTestMessage], error) {
+	if env.Message.Content == "error" {
+		evt := NewEvent[supervisorNodeTestMessage, supervisorNodeTestMessage](ErrorLevelCritical, errors.New("test error"), env)
+		return nil, evt
+	}
+
+	return env, nil
 }
 
-func (h supervisorHandler) Handle(ctx context.Context, env *Envelope[supervisorNodeTestMessage]) error {
-	if env.Event.Level == ErrorLevelCritical {
-		env.Event = NewEvent(ErrorLevelError, errors.New("supervised"), env)
-		panic(env.Event)
+type supervisorHandler struct{}
+
+func (h supervisorHandler) Start(ctx context.Context) error {
+	return nil
+}
+
+func (h supervisorHandler) Handle(ctx context.Context, evt *Event[supervisorNodeTestMessage, supervisorNodeTestMessage]) error {
+	if evt != nil && evt.Level == ErrorLevelCritical {
+		newEvt := NewEvent[supervisorNodeTestMessage, supervisorNodeTestMessage](ErrorLevelError, errors.New("supervised"), evt.Envelope)
+		panic(newEvt)
 	}
 
-	if env.Event.Level == ErrorLevelError {
-		env.OutChan = nil
-	}
 	return nil
 }
 
 func TestSupervisor_NewSupervisor(t *testing.T) {
 	t.Run("creates a new supervisor with the given name", func(t *testing.T) {
 		handler := supervisorHandler{}
-		parentSupervisor := NewSupervisor[supervisorNodeTestMessage](context.Background(), "parent supervisor", handler)
-		childSupervisor := NewSupervisor[supervisorNodeTestMessage](context.Background(), "child supervisor", handler)
+		parentSupervisor := NewSupervisor[supervisorNodeTestMessage, supervisorNodeTestMessage](context.Background(), "parent supervisor", handler)
+		childSupervisor := NewSupervisor[supervisorNodeTestMessage, supervisorNodeTestMessage](context.Background(), "child supervisor", handler)
 		parentSupervisor.AddSupervisor(childSupervisor)
 
 		assert.NotNil(t, parentSupervisor)
@@ -70,31 +71,32 @@ func TestSupervisor_NewSupervisor(t *testing.T) {
 func TestSupervisor_AddNode(t *testing.T) {
 	t.Run("adds a node to the supervisor", func(t *testing.T) {
 		supervisorHandler := supervisorHandler{}
-		supervisor := NewSupervisor[supervisorNodeTestMessage](context.Background(), "TestSupervisor", supervisorHandler)
+		supervisor := NewSupervisor[supervisorNodeTestMessage, supervisorNodeTestMessage](context.Background(), "TestSupervisor", supervisorHandler)
 		assert.NotNil(t, supervisor.Nodes)
 
 		ctx := context.Background()
 		nodeHandler := supervisorNodeHandler{}
-		node := NewNode[supervisorNodeTestMessage](ctx, "TestNode", nodeHandler)
+		node := NewNode[supervisorNodeTestMessage, supervisorNodeTestMessage](ctx, "TestNode", nodeHandler)
 		supervisor.AddNode(node)
 
 		assert.Contains(t, supervisor.Nodes, "TestNode")
-		assert.Equal(t, supervisor.Events, node.EventChan)
+		assert.Equal(t, supervisor.Events, node.Events)
 	})
 }
 
 func TestSupervisor_RestartNode(t *testing.T) {
 	t.Run("restarts a node", func(t *testing.T) {
 		supervisorHandler := supervisorHandler{}
-		supervisor := NewSupervisor[supervisorNodeTestMessage](context.Background(), "TestSupervisor", supervisorHandler)
+		supervisor := NewSupervisor[supervisorNodeTestMessage, supervisorNodeTestMessage](context.Background(), "TestSupervisor", supervisorHandler)
 
 		ctx := context.Background()
 		nodeHandler := supervisorNodeHandler{}
-		node := NewNode[supervisorNodeTestMessage](ctx, "TestNode", nodeHandler)
+		node := NewNode[supervisorNodeTestMessage, supervisorNodeTestMessage](ctx, "TestNode", nodeHandler)
 		supervisor.AddNode(node)
 
-		node.AddInputChannel("input", make(chan *Envelope[supervisorNodeTestMessage], 10))
-		node.AddWorkers("input", 3, "worker")
+		inEdge := NewEdge[supervisorNodeTestMessage, supervisorNodeTestMessage]("input", nil, node, 10, 1)
+		node.AddInput("input", inEdge)
+		node.AddWorkers(inEdge, 3, "worker")
 
 		assert.Len(t, node.WorkerPool["input"], 3)
 
@@ -102,13 +104,11 @@ func TestSupervisor_RestartNode(t *testing.T) {
 		time.Sleep(20 * time.Microsecond)
 
 		env := NewEnvelope[supervisorNodeTestMessage](supervisorNodeTestMessage{Content: "error"}, 2)
-		env.CurrentNode = node
-		assert.Equal(t, node, env.CurrentNode)
-		node.InputChans["input"] <- env
-		assert.Len(t, node.InputChans["input"], 1)
+		node.In["input"].Channel <- env
+		assert.Len(t, node.In["input"].Channel, 1)
 
 		time.Sleep(1 * time.Millisecond)
-		assert.Len(t, node.InputChans["input"], 0)
+		assert.Len(t, node.In["input"], 0)
 		assert.Len(t, node.WorkerPool["input"], 3)
 
 		// TODO: Figure out how to make sure both the node handler and the supervisor handler touched env without race conditions or mutexes

@@ -18,23 +18,31 @@ func (m graphTestMessage) String() string {
 
 type graphTestHandler struct{}
 
-func (h *graphTestHandler) Handle(_ context.Context, env *Envelope[graphTestMessage]) error {
-	if env.Message.Content == "error" {
-		return errors.New("test error")
-	}
+func (h *graphTestHandler) Start(context.Context) error {
 	return nil
+}
+
+func (h *graphTestHandler) Handle(_ context.Context, env *Envelope[graphTestMessage]) (*Envelope[graphTestMessage], error) {
+	if env.Message.Content == "error" {
+		return nil, errors.New("test error")
+	}
+	return env, nil
 }
 
 type graphSupervisorTestHandler struct{}
 
-func (h *graphSupervisorTestHandler) Handle(_ context.Context, _ *Envelope[graphTestMessage]) error {
+func (h *graphSupervisorTestHandler) Start(context.Context) error {
+	return nil
+}
+
+func (h *graphSupervisorTestHandler) Handle(_ context.Context, evt *Event[graphTestMessage, graphTestMessage]) error {
 	return nil
 }
 
 func TestGraph_NewGraph(t *testing.T) {
 	t.Run("creates a new graph with the given context", func(t *testing.T) {
 		ctx := context.Background()
-		graph := NewGraph[graphTestMessage](ctx, "graph", &Config{})
+		graph := NewGraph(ctx, "graph", &Config{})
 
 		assert.NotNil(t, graph)
 		assert.NotNil(t, graph.ctx)
@@ -48,38 +56,45 @@ func TestGraph_NewGraph(t *testing.T) {
 func TestGraph_AddSupervisor(t *testing.T) {
 	t.Run("adds a supervisor to the graph", func(t *testing.T) {
 		ctx := context.Background()
-		graph := NewGraph[graphTestMessage](ctx, "graph", &Config{})
+		graph := NewGraph(ctx, "graph", &Config{})
 
 		parentSupervisorName := "parent supervisor"
 		childSupervisorName := "child supervisor"
-		graph.AddSupervisor(nil, parentSupervisorName, &graphSupervisorTestHandler{})
-		graph.AddSupervisor(&parentSupervisorName, childSupervisorName, &graphSupervisorTestHandler{})
+		supervisor1 := NewSupervisor[graphTestMessage, graphTestMessage](ctx, "parent supervisor", &graphSupervisorTestHandler{})
+		supervisor2 := NewSupervisor[graphTestMessage, graphTestMessage](ctx, "child supervisor", &graphSupervisorTestHandler{})
+
+		graph.AddSupervisor(supervisor1)
+		graph.AddSupervisor(supervisor2)
 
 		assert.Contains(t, graph.Supervisors, parentSupervisorName)
 		assert.Contains(t, graph.Supervisors, childSupervisorName)
-		assert.Equal(t, parentSupervisorName, graph.Supervisors[parentSupervisorName].Name)
-		assert.Equal(t, childSupervisorName, graph.Supervisors[childSupervisorName].Name)
+		assert.Equal(t, parentSupervisorName, supervisor1.Name)
+		assert.Equal(t, childSupervisorName, supervisor2.Name)
 	})
 }
 
 func TestGraph_AddNode(t *testing.T) {
 	t.Run("adds a node to the graph and assigns it to a supervisor", func(t *testing.T) {
 		ctx := context.Background()
-		graph := NewGraph[graphTestMessage](ctx, "graph", &Config{})
+		graph := NewGraph(ctx, "graph", &Config{})
 
-		supervisorName := "TestSupervisor"
-		graph.AddSupervisor(nil, supervisorName, &graphSupervisorTestHandler{})
-		supervisor := graph.Supervisors[supervisorName]
+		supervisorName := "Test Supervisor"
+		nodeName := "Test Node"
 
-		nodeName := "TestNode"
+		supervisor := NewSupervisor[graphTestMessage, graphTestMessage](ctx, supervisorName, &graphSupervisorTestHandler{})
+		graph.AddSupervisor(supervisor)
+
 		handler := &graphTestHandler{}
-		graph.AddNode(supervisorName, nodeName, handler)
+		node := NewNode[graphTestMessage, graphTestMessage](ctx, nodeName, handler)
+		graph.AddNode(node)
+
+		supervisor.AddNode(node)
 
 		assert.Contains(t, graph.Nodes, nodeName)
-		assert.Equal(t, nodeName, graph.Nodes[nodeName].Name)
-		assert.Equal(t, handler, graph.Nodes[nodeName].Handler)
+		assert.Equal(t, nodeName, node.Name)
+		assert.Equal(t, handler, node.Handler)
 		assert.Contains(t, supervisor.Nodes, nodeName)
-		assert.Equal(t, graph.Nodes[nodeName], supervisor.Nodes[nodeName])
+		assert.Equal(t, node, supervisor.Nodes[nodeName])
 	})
 }
 
@@ -90,43 +105,45 @@ func TestGraph_AddEdge(t *testing.T) {
 		supervisorName := "TestSupervisor"
 		nodeName1 := "Node1"
 		nodeName2 := "Node2"
-		inputName := "input"
-		outputName := "outChannel"
 
 		handler := &graphTestHandler{}
 
-		graph := NewGraph[graphTestMessage](ctx, "graph", &Config{}).
-			AddSupervisor(nil, supervisorName, &graphSupervisorTestHandler{}).
-			AddNode(supervisorName, nodeName1, handler).
-			AddNode(supervisorName, nodeName2, handler).
-			AddEdge(nodeName1, outputName, nodeName2, inputName, 10, 1)
+		supervisor := NewSupervisor[graphTestMessage, graphTestMessage](ctx, supervisorName, &graphSupervisorTestHandler{})
+		node1 := NewNode[graphTestMessage, graphTestMessage](ctx, nodeName1, handler)
+		node2 := NewNode[graphTestMessage, graphTestMessage](ctx, nodeName2, handler)
+		edge := NewEdge[graphTestMessage, graphTestMessage, graphTestMessage]("test edge", node1, node2, 10, 1)
+
+		graph := NewGraph(ctx, "graph", &Config{}).
+			AddSupervisor(supervisor, node1, node2).
+			AddNode(node1).
+			AddNode(node2)
+
+		graph.AddEdge(edge)
 
 		// Verify channels are set up correctly
-		assert.Contains(t, graph.Nodes[nodeName1].OutputChans, nodeName1+":"+outputName)
-		assert.Contains(t, graph.Nodes[nodeName2].InputChans, nodeName2+":"+inputName)
+		assert.Equal(t, node1.Out.Name, "test edge")
+		assert.Contains(t, node2.In, "test edge")
 
 		// Verify the same channel is being used
-		outChannel := graph.Nodes[nodeName1].OutputChans[nodeName1+":"+outputName].GoChans[nodeName2+":"+inputName]
-		inChannel := graph.Nodes[nodeName2].InputChans[nodeName2+":"+inputName]
-		assert.Equal(t, outChannel, inChannel)
+		outEdge := node1.Out.GoChans["test edge"]
+		inEdge := node2.In["test edge"]
+		assert.Equal(t, outEdge, inEdge)
 
 		// Verify the buffer size
-		assert.Equal(t, 10, cap(outChannel))
+		assert.Equal(t, 10, cap(outEdge.Channel))
 	})
 }
 
 func TestGraph_SimpleChannel(t *testing.T) {
 	// Create a buffered channel
-	// inChannel := make(chan *Envelope[graphTestMessage], 10)
-	inChannel := NewChannel[graphTestMessage](10, false)
-	outChannel := inChannel
+	inChannel := make(chan *Envelope[graphTestMessage], 10)
 
 	// Create a test message
 	message := graphTestMessage{Content: "test"}
 	envelope := &Envelope[graphTestMessage]{Message: message, NumRetries: 3}
 
 	// Send the envelope
-	outChannel <- envelope
+	inChannel <- envelope
 
 	// Receive the envelope
 	receivedEnvelope := <-inChannel
@@ -136,24 +153,22 @@ func TestGraph_SimpleChannel(t *testing.T) {
 }
 
 func TestGraph_Start(t *testing.T) {
-	t.Run("starts all nodes in the graph", func(t *testing.T) {
+	t.Run("starts all supervisors in the graph", func(t *testing.T) {
 		ctx := context.Background()
 		handler := &graphTestHandler{}
 
-		supervisorName := "TestSupervisor"
-		nodeName1 := "Node1"
-		nodeName2 := "Node2"
+		supervisor := NewSupervisor[graphTestMessage, graphTestMessage](ctx, "TestSupervisor", &graphSupervisorTestHandler{})
+		node1 := NewNode[graphTestMessage, graphTestMessage](ctx, "Node1", handler)
+		node2 := NewNode[graphTestMessage, graphTestMessage](ctx, "Node2", handler)
+		edge := NewEdge("test edge", node1, node2, 10, 1)
 
-		graph := NewGraph[graphTestMessage](ctx, "graph", &Config{}).
-			AddSupervisor(nil, supervisorName, &graphSupervisorTestHandler{}).
-			AddNode(supervisorName, nodeName1, handler).
-			AddNode(supervisorName, nodeName2, handler).
-			AddEdge(nodeName1, "outChannel", nodeName2, "input", 10, 1)
+		graph := NewGraph(ctx, "graph", &Config{}).
+			AddSupervisor(supervisor, node1, node2).
+			AddNode(node1).
+			AddNode(node2).
+			AddEdge(edge)
 
 		// Start the graph
-		graph.Start()
-
-		// Since our nodes don't have a "running" state, we'll assume Start works if no panics occur.
 		assert.NotPanics(t, func() {
 			graph.Start()
 		})

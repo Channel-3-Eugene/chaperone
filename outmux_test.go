@@ -26,8 +26,8 @@ func TestOutmux_NewOutMux(t *testing.T) {
 
 func TestOutmux_AddChannel(t *testing.T) {
 	outMux := NewOutMux[outmuxTestMessage]("test")
-	ch := make(chan *Envelope[outmuxTestMessage], 5)
-	outMux.AddChannel("test", ch)
+	outEdge := NewEdge[outmuxTestMessage, outmuxTestMessage, outmuxTestMessage]("test", nil, nil, 10, 1)
+	outMux.AddChannel(outEdge)
 
 	if _, exists := outMux.GoChans["test"]; !exists {
 		t.Fatal("Channel 'test' not added to GoChans")
@@ -36,16 +36,15 @@ func TestOutmux_AddChannel(t *testing.T) {
 
 func TestOutmux_Send(t *testing.T) {
 	outMux := NewOutMux[outmuxTestMessage]("test")
-	ch1 := make(chan *Envelope[outmuxTestMessage], 5)
-	ch2 := make(chan *Envelope[outmuxTestMessage], 5)
-	outMux.AddChannel("test1", ch1)
-	outMux.AddChannel("test2", ch2)
-
+	outEdge1 := NewEdge[outmuxTestMessage, outmuxTestMessage, outmuxTestMessage]("test1", nil, nil, 10, 1)
+	outEdge2 := NewEdge[outmuxTestMessage, outmuxTestMessage, outmuxTestMessage]("test2", nil, nil, 10, 1)
+	outMux.AddChannel(outEdge1)
+	outMux.AddChannel(outEdge2)
 	msg := &Envelope[outmuxTestMessage]{Message: outmuxTestMessage{Data: "test message"}}
 	outMux.Send(msg)
 
 	select {
-	case receivedMsg := <-ch1:
+	case receivedMsg := <-outEdge1.Channel:
 		if receivedMsg.Message.Data != "test message" {
 			t.Fatalf("Expected 'test message', got '%s'", receivedMsg.Message.Data)
 		}
@@ -54,7 +53,7 @@ func TestOutmux_Send(t *testing.T) {
 	}
 
 	select {
-	case receivedMsg := <-ch2:
+	case receivedMsg := <-outEdge2.Channel:
 		if receivedMsg.Message.Data != "test message" {
 			t.Fatalf("Expected 'test message', got '%s'", receivedMsg.Message.Data)
 		}
@@ -65,9 +64,9 @@ func TestOutmux_Send(t *testing.T) {
 
 func TestOutmux_AddChannelTwice(t *testing.T) {
 	outMux := NewOutMux[outmuxTestMessage]("test")
-	ch := make(chan *Envelope[outmuxTestMessage], 5)
-	outMux.AddChannel("test", ch)
-	outMux.AddChannel("test", ch)
+	outEdge := NewEdge[outmuxTestMessage, outmuxTestMessage, outmuxTestMessage]("test", nil, nil, 10, 1)
+	outMux.AddChannel(outEdge)
+	outMux.AddChannel(outEdge)
 
 	if len(outMux.GoChans) != 1 {
 		t.Fatalf("Expected 1 channel, got %d", len(outMux.GoChans))

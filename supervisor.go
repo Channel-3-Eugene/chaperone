@@ -6,43 +6,42 @@ import (
 	"runtime"
 )
 
-func NewSupervisor[T Message](ctx context.Context, name string, handler Handler[T]) *Supervisor[T] {
-	c, cancel := context.WithCancelCause(ctx)
-	return &Supervisor[T]{
+func NewSupervisor[In, Out Message](ctx context.Context, name string, handler EvtHandler[In, Out]) *Supervisor[In, Out] {
+	c, cancel := context.WithCancel(ctx)
+	return &Supervisor[In, Out]{
 		ctx:         c,
 		cancel:      cancel,
 		Name:        name,
-		Supervisors: make(map[string]*Supervisor[T]),
-		Nodes:       make(map[string]*Node[T]),
-		Events:      make(chan *Event[T], 1000),
+		Supervisors: make(map[string]*Supervisor[In, Out]),
+		Nodes:       make(map[string]*Node[In, Out]),
+		Events:      make(chan *Event[In, Out], 1000),
 		Handler:     handler,
 	}
 }
 
-func (s *Supervisor[T]) AddSupervisor(supervisor *Supervisor[T]) {
+func (s *Supervisor[In, Out]) AddSupervisor(supervisor *Supervisor[In, Out]) {
 	supervisor.Parent = s
 	s.Supervisors[supervisor.Name] = supervisor
 }
 
-func (s *Supervisor[T]) AddNode(node *Node[T]) {
+func (s *Supervisor[In, Out]) AddNode(node *Node[In, Out]) {
 	s.Nodes[node.Name] = node
-	node.EventChan = s.Events
+	node.Events = s.Events
 }
 
-func (s *Supervisor[T]) Start() {
-
+func (s *Supervisor[In, Out]) Start() {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
 				switch x := r.(type) {
-				case *Event[T]:
-					ev := NewEvent(ErrorLevelCritical, fmt.Errorf("supervisor %s panicked", s.Name), x.Envelope)
+				case *Event[In, Out]:
+					ev := NewEvent[In, Out](ErrorLevelCritical, fmt.Errorf("supervisor %s panicked", s.Name), x.Envelope)
 					s.handleSupervisorEvent(ev)
 				case runtime.Error:
-					ev := NewEvent[T](ErrorLevelCritical, fmt.Errorf("worker %s panicked: %#v", s.Name, x), nil)
+					ev := NewEvent[In, Out](ErrorLevelCritical, fmt.Errorf("worker %s panicked: %#v", s.Name, x), nil)
 					s.handleSupervisorEvent(ev)
 				default:
-					ev := NewEvent[T](ErrorLevelCritical, fmt.Errorf("worker %s panicked: %#v", s.Name, x), nil)
+					ev := NewEvent[In, Out](ErrorLevelCritical, fmt.Errorf("worker %s panicked: %#v", s.Name, x), nil)
 					s.handleSupervisorEvent(ev)
 				}
 			}
@@ -59,7 +58,7 @@ func (s *Supervisor[T]) Start() {
 					fmt.Printf("Warning: %#v\n", event.Envelope.Message)
 					s.handleSupervisorEvent(event)
 				case ErrorLevelInfo:
-					fmt.Printf("Info: %#v`\n", event.Envelope.Message)
+					fmt.Printf("Info: %#v\n", event.Envelope.Message)
 					s.handleSupervisorEvent(event)
 				}
 			case <-s.ctx.Done():
@@ -79,18 +78,18 @@ func (s *Supervisor[T]) Start() {
 	}
 }
 
-func (s *Supervisor[T]) handleSupervisorEvent(ev *Event[T]) {
+func (s *Supervisor[In, Out]) handleSupervisorEvent(ev *Event[In, Out]) {
 	if ev.Level >= ErrorLevelError && s.Parent != nil && s.Parent.Events != nil {
 		s.Parent.Events <- ev
 	}
 	if ev.Level == ErrorLevelCritical {
 		fmt.Println("Critical error encountered, restarting node workers.")
-		ev.Envelope.CurrentNode.RestartWorkers()
+		ev.Node.RestartWorkers()
 	}
 }
 
-func (s *Supervisor[T]) Stop() {
-	ev := NewEvent[T](ErrorLevelInfo, fmt.Errorf("stopping supervisor %s", s.Name), nil)
+func (s *Supervisor[In, Out]) Stop() {
+	ev := NewEvent[In, Out](ErrorLevelInfo, fmt.Errorf("stopping supervisor %s", s.Name), nil)
 
 	for _, supervisor := range s.Supervisors {
 		supervisor.Stop()
@@ -105,5 +104,5 @@ func (s *Supervisor[T]) Stop() {
 		close(s.Parent.Events)
 	}
 
-	s.cancel(ev)
+	s.cancel()
 }

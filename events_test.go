@@ -8,9 +8,17 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type eventTestMessage struct {
+	Content string
+}
+
+func (m eventTestMessage) String() string {
+	return m.Content
+}
+
 func TestEvents_NewEvent(t *testing.T) {
-	env := &Envelope[nodeTestMessage]{
-		Message: nodeTestMessage{
+	env := &Envelope[eventTestMessage]{
+		Message: eventTestMessage{
 			Content: "Test message",
 		},
 	}
@@ -29,7 +37,7 @@ func TestEvents_NewEvent(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		event := NewEvent(tt.level, err, env)
+		event := NewEvent[eventTestMessage, eventTestMessage](tt.level, err, env)
 		assert.Equal(t, tt.expected, event.Level, "Expected level to match")
 		assert.Equal(t, env.Message.Content, event.Envelope.Message.Content, "Expected message to match")
 		assert.Equal(t, err, event.Event, "Expected error to match")
@@ -37,31 +45,31 @@ func TestEvents_NewEvent(t *testing.T) {
 }
 
 func TestEvents_Error(t *testing.T) {
-	env := &Envelope[nodeTestMessage]{
-		Message: nodeTestMessage{
+	env := &Envelope[eventTestMessage]{
+		Message: eventTestMessage{
 			Content: "Test message",
 		},
 	}
 	err := errors.New("Test error")
-	event := NewEvent(ErrorLevelError, err, env)
+	event := NewEvent[eventTestMessage, eventTestMessage](ErrorLevelError, err, env)
 
 	expected := fmt.Sprintf("[%s] %v", event.Level.Level(), event.Event)
 	assert.Equal(t, expected, event.Error(), "Expected error string to match")
 
-	eventNoError := NewEvent(ErrorLevelInfo, nil, env)
+	eventNoError := NewEvent[eventTestMessage, eventTestMessage](ErrorLevelInfo, nil, env)
 	expectedNoError := fmt.Sprintf("[%s] %s", eventNoError.Level.Level(), eventNoError.Envelope.Message.String())
 	assert.Equal(t, expectedNoError, eventNoError.Error(), "Expected error string to match when no error is present")
 	assert.Nil(t, eventNoError.Event, "Expected error to be nil")
 }
 
 func TestEvents_Unwrap(t *testing.T) {
-	env := &Envelope[nodeTestMessage]{
-		Message: nodeTestMessage{
+	env := &Envelope[eventTestMessage]{
+		Message: eventTestMessage{
 			Content: "Test message",
 		},
 	}
 	err := errors.New("Test error")
-	event := NewEvent(ErrorLevelError, err, env)
+	event := NewEvent[eventTestMessage, eventTestMessage](ErrorLevelError, err, env)
 
 	unwrapped := event.Unwrap()
 	assert.Equal(t, err, unwrapped, "Expected unwrapped error to match")

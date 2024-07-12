@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -27,117 +26,112 @@ type benchmarkHandler struct {
 	outChannelName string
 }
 
-func (h *benchmarkHandler) Handle(_ context.Context, env *Envelope[benchmarkMessage]) error {
+func (h *benchmarkHandler) Start(context.Context) error {
+	return nil
+}
+
+func (h *benchmarkHandler) Handle(_ context.Context, env *Envelope[benchmarkMessage]) (*Envelope[benchmarkMessage], error) {
 	if env.Message.String() == "error" {
-		return errors.New("test error")
+		return nil, errors.New("test error")
 	}
 
-	env.OutChan = env.CurrentNode.OutputChans[h.outChannelName]
-	return nil
+	return env, nil
 }
 
 type benchmarkSupervisorHandler struct{}
 
-func (h *benchmarkSupervisorHandler) Handle(_ context.Context, _ *Envelope[benchmarkMessage]) error {
+func (h *benchmarkSupervisorHandler) Start(context.Context) error {
 	return nil
 }
 
-func logMemoryUsage() {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	fmt.Printf("Alloc = %v MiB", bToMb(m.Alloc))
-	fmt.Printf("\tTotalAlloc = %v MiB", bToMb(m.TotalAlloc))
-	fmt.Printf("\tSys = %v MiB", bToMb(m.Sys))
-	fmt.Printf("\tNumGC = %v\n", m.NumGC)
-}
-
-func bToMb(b uint64) uint64 {
-	return b / 1024 / 1024
+func (h *benchmarkSupervisorHandler) Handle(_ context.Context, _ *Event[benchmarkMessage, benchmarkMessage]) error {
+	return nil
 }
 
 func BenchmarkGraph(b *testing.B) {
 	ctx := context.Background()
 
-	SupervisorName := "supervisor1"
-	Node1Name := "node1"
-	Node2Name := "node2"
-	Node3Name := "node3"
-	Node4Name := "node4"
-	Node5Name := "node5"
-	BufferSize := 100_000_000
-	inputChannelName := "input"
-	outputChannelName := "output"
+	bufferSize := 100_000_000
 	numWorkers := 4
 	totalMessages := 5_965_232
 
-	graph := NewGraph[benchmarkMessage](ctx, "graph", &Config{}).
-		AddSupervisor(nil, SupervisorName, &benchmarkSupervisorHandler{}).
-		AddNode(SupervisorName, Node1Name, &benchmarkHandler{outChannelName: Node1Name + ":" + outputChannelName}).
-		AddNode(SupervisorName, Node2Name, &benchmarkHandler{outChannelName: Node2Name + ":" + outputChannelName}).
-		AddNode(SupervisorName, Node3Name, &benchmarkHandler{outChannelName: Node3Name + ":" + outputChannelName}).
-		AddNode(SupervisorName, Node4Name, &benchmarkHandler{outChannelName: Node4Name + ":" + outputChannelName}).
-		AddNode(SupervisorName, Node5Name, &benchmarkHandler{outChannelName: Node5Name + ":" + outputChannelName}).
-		AddEdge("", "", Node1Name, inputChannelName, BufferSize, numWorkers).
-		AddEdge(Node1Name, outputChannelName, Node2Name, inputChannelName, BufferSize, numWorkers).
-		AddEdge(Node2Name, outputChannelName, Node3Name, inputChannelName, BufferSize, numWorkers).
-		AddEdge(Node3Name, outputChannelName, Node4Name, inputChannelName, BufferSize, numWorkers).
-		AddEdge(Node4Name, outputChannelName, Node5Name, inputChannelName, BufferSize, numWorkers).
-		AddEdge(Node5Name, outputChannelName, "", "final", BufferSize, numWorkers).
+	SupervisorName := "supervisor1"
+	Supervisor := NewSupervisor[benchmarkMessage, benchmarkMessage](ctx, SupervisorName, &benchmarkSupervisorHandler{})
+	Node1Name := "node1"
+	Node1 := NewNode[benchmarkMessage, benchmarkMessage](ctx, Node1Name, &benchmarkHandler{outChannelName: "out1"})
+	Edge0 := NewEdge[benchmarkMessage, benchmarkMessage, benchmarkMessage]("in", nil, Node1, bufferSize, numWorkers)
+	Node2Name := "node2"
+	Node2 := NewNode[benchmarkMessage, benchmarkMessage](ctx, Node2Name, &benchmarkHandler{outChannelName: "out2"})
+	Edge1 := NewEdge[benchmarkMessage, benchmarkMessage, benchmarkMessage]("out1", Node1, Node2, bufferSize, numWorkers)
+	Node3Name := "node3"
+	Node3 := NewNode[benchmarkMessage, benchmarkMessage](ctx, Node3Name, &benchmarkHandler{outChannelName: "out3"})
+	Edge2 := NewEdge[benchmarkMessage, benchmarkMessage, benchmarkMessage]("out2", Node2, Node3, bufferSize, numWorkers)
+	Node4Name := "node4"
+	Node4 := NewNode[benchmarkMessage, benchmarkMessage](ctx, Node4Name, &benchmarkHandler{outChannelName: "out4"})
+	Edge3 := NewEdge[benchmarkMessage, benchmarkMessage, benchmarkMessage]("out3", Node3, Node4, bufferSize, numWorkers)
+	Node5Name := "node5"
+	Node5 := NewNode[benchmarkMessage, benchmarkMessage](ctx, Node5Name, &benchmarkHandler{outChannelName: "out"})
+	Edge4 := NewEdge[benchmarkMessage, benchmarkMessage, benchmarkMessage]("out4", Node4, Node5, bufferSize, numWorkers)
+	Edge5 := NewEdge[benchmarkMessage, benchmarkMessage, benchmarkMessage]("out", Node5, nil, bufferSize, numWorkers)
+
+	graph := NewGraph(ctx, "graph", &Config{}).
+		AddSupervisor(Supervisor).
+		AddEdge(Edge0).
+		AddNode(Node1).
+		AddEdge(Edge1).
+		AddNode(Node2).
+		AddEdge(Edge2).
+		AddNode(Node3).
+		AddEdge(Edge3).
+		AddNode(Node4).
+		AddEdge(Edge4).
+		AddNode(Node5).
+		AddEdge(Edge5).
 		Start()
 
 	fmt.Println("Graph started")
 	fmt.Printf("Number of nodes: %d\n", len(graph.Nodes))
 
-	loops := 10
-	sumElapsedTime := 0.0
-	sumDoneCount := 0
-	for i := 0; i < loops; i++ {
-		// Run the benchmark
-		b.ResetTimer()
-		sendCount := 0
-		startTime := time.Now()
+	sendCount := 0
+	startTime := time.Now()
 
-		wg := sync.WaitGroup{}
-		wg.Add(totalMessages)
+	wg := sync.WaitGroup{}
+	wg.Add(totalMessages)
 
-		go func() {
-			for i := 0; i < totalMessages; i++ {
-				msg := benchmarkMessage{}
-				msg.SetContent("test message")
-				env := &Envelope[benchmarkMessage]{Message: msg}
-				graph.Nodes[Node1Name].InputChans[Node1Name+":"+inputChannelName] <- env
-				sendCount++
-			}
-		}()
+	go func() {
+		for i := 0; i < totalMessages; i++ {
+			msg := benchmarkMessage{}
+			msg.SetContent("test message")
+			env := &Envelope[benchmarkMessage]{Message: msg}
+			Edge0.Channel <- env
+			sendCount++
+		}
+	}()
 
-		doneCount := 0
-		for range graph.Nodes[Node5Name].OutputChans[Node5Name+":"+outputChannelName].GoChans[":final"] {
-			doneCount++
-			wg.Done()
-			if doneCount == totalMessages {
-				break
-			}
-			for _, edge := range graph.Edges {
-				if len(edge.Channel) == cap(edge.Channel) {
-					fmt.Printf("Buffer for channel %s full: %d\n", edge.Destination, len(edge.Channel))
-				}
+	doneCount := 0
+	for range Edge5.Channel {
+		doneCount++
+		wg.Done()
+		if doneCount == totalMessages {
+			break
+		}
+		for _, edge := range graph.Edges {
+			e := edge.(*Edge[benchmarkMessage])
+			if len(e.Channel) == cap(e.Channel) {
+				fmt.Printf("Buffer for channel %s full: %d\n", e.name, len(e.Channel))
 			}
 		}
-
-		logMemoryUsage()
-
-		wg.Wait()
-		elapsedTime := time.Since(startTime).Seconds()
-		sumElapsedTime += elapsedTime
-		sumDoneCount += doneCount
-		b.StopTimer()
-
-		envelopesPerSecond := float64(doneCount) / elapsedTime
-		fmt.Printf("Processed %f envelopes per second for a bitrate of %d Mbps\n", envelopesPerSecond, bitrate(envelopesPerSecond))
 	}
+
+	wg.Wait()
+	elapsedTime := time.Since(startTime).Seconds()
+
+	envelopesPerSecond := float64(doneCount) / elapsedTime
+	fmt.Printf("Processed %f envelopes per second for a bitrate of %d Mbps\n", envelopesPerSecond, bitrate(envelopesPerSecond))
+
 	graph.Stop()
 
-	sumEnvelopesPerSecond := float64(sumDoneCount) / sumElapsedTime
+	sumEnvelopesPerSecond := float64(doneCount) / elapsedTime
 	fmt.Printf("Average %f envelopes per second for a bitrate of %d Mbps\n", sumEnvelopesPerSecond, bitrate(sumEnvelopesPerSecond))
 }
 
