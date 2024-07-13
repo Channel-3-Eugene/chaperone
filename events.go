@@ -24,6 +24,10 @@ const (
 
 const DefaultErrorLevel = ErrorLevelInfo
 
+func (e ErrorLevel) String() string {
+	return e.Level()
+}
+
 func NewEvent(level ErrorLevel, err error, env Message) *Event {
 	if level == ErrorLevelDefault {
 		level = DefaultErrorLevel
@@ -42,10 +46,7 @@ func (e *Event) Level() ErrorLevel {
 
 // Error implements the error interface.
 func (e Event) Error() string {
-	if e.Event != nil {
-		return fmt.Sprintf("[%s] %s", e.Level(), e.Event)
-	}
-	return fmt.Sprintf("[%s] %s", e.Level(), e.envelope.String())
+	return fmt.Sprintf("[%s] %s", e.Level().String(), e.Event())
 }
 
 func (e *Event) String() string {
@@ -53,6 +54,9 @@ func (e *Event) String() string {
 }
 
 func (e *Event) Event() string {
+	if e.event == nil {
+		return ""
+	}
 	return e.event.Error()
 }
 

@@ -1,3 +1,5 @@
+//go:build profile
+
 package chaperone
 
 import (
@@ -104,20 +106,17 @@ func TestProfilingGraph(t *testing.T) {
 	graph := NewGraph(ctx, "graph", &Config{}).
 		AddSupervisor(nil, Supervisor).
 		AddEdge(Edge0).
-		AddNode(Node1).
+		AddNode(Supervisor, Node1).
 		AddEdge(Edge1).
-		AddNode(Node2).
+		AddNode(Supervisor, Node2).
 		AddEdge(Edge2).
-		AddNode(Node3).
+		AddNode(Supervisor, Node3).
 		AddEdge(Edge3).
-		AddNode(Node4).
+		AddNode(Supervisor, Node4).
 		AddEdge(Edge4).
-		AddNode(Node5).
+		AddNode(Supervisor, Node5).
 		AddEdge(Edge5).
 		Start()
-
-	fmt.Println("Graph started")
-	fmt.Printf("Number of nodes: %d\n", len(graph.Nodes))
 
 	sendCount := 0
 	startTime := time.Now()

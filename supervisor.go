@@ -9,14 +9,13 @@ import (
 func NewSupervisor(ctx context.Context, name string, handler EvtHandler) *Supervisor {
 	c, cancel := context.WithCancel(ctx)
 	return &Supervisor{
-		ctx:          c,
-		cancel:       cancel,
-		name:         name,
-		Supervisors:  make(map[string]EventWorker),
-		Nodes:        make(map[string]EnvelopeWorker),
-		Events:       NewEdge("events", nil, nil, 1000, 1),
-		ParentEvents: NewEdge("events", nil, nil, 1000, 1),
-		Handler:      handler,
+		ctx:         c,
+		cancel:      cancel,
+		name:        name,
+		Supervisors: make(map[string]EventWorker),
+		Nodes:       make(map[string]EnvelopeWorker),
+		Events:      NewEdge("events", nil, nil, 1000, 1),
+		Handler:     handler,
 	}
 }
 
@@ -25,12 +24,15 @@ func (s *Supervisor) Name() string {
 }
 
 func (s *Supervisor) AddChildSupervisor(supervisor EventWorker) {
-	s.Supervisors[supervisor.Name()] = supervisor
-	supervisor.SetEvents(s.Events)
+	if supervisor != nil {
+		s.Supervisors[supervisor.Name()] = supervisor
+		supervisor.SetEvents(s.Events)
+	}
 }
 
 func (s *Supervisor) SetEvents(edge MessageCarrier) {
-	s.ParentEvents = edge
+	e := edge.(*Edge)
+	s.ParentEvents = e
 }
 
 func (s *Supervisor) AddNode(node EnvelopeWorker) {
@@ -64,15 +66,12 @@ func (s *Supervisor) Start() {
 					fmt.Printf("Received unexpected message type: %#v\n", msg)
 					continue
 				}
+
 				switch event.Level() {
 				case ErrorLevelCritical:
 					fmt.Printf("Critical error: %#v\n", event.Message()) // TODO: replace with logging
 					panic(event)
-				case ErrorLevelWarning:
-					fmt.Printf("Warning: %#v\n", event.Message())
-					s.handleSupervisorEvent(event)
-				case ErrorLevelInfo:
-					fmt.Printf("Info: %#v\n", event.Message())
+				default:
 					s.handleSupervisorEvent(event)
 				}
 			case <-s.ctx.Done():

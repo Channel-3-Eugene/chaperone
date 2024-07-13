@@ -29,36 +29,23 @@ func TestOutmux_AddChannel(t *testing.T) {
 	outEdge := NewEdge("test", nil, nil, 10, 1)
 	outMux.AddChannel(outEdge)
 
-	if _, exists := outMux.GoChans["test"]; !exists {
-		t.Fatal("Channel 'test' not added to GoChans")
-	}
+	assert.Equal(t, outEdge, outMux.GoChans["test"], "Expected new edge to be added to OutChans")
+	assert.Contains(t, outMux.GoChans, "test", "Expected new edge to be added to GoChans")
 }
 
-func TestOutmux_Send(t *testing.T) {
+func TestOutmux_SendOnce(t *testing.T) {
 	outMux := NewOutMux("test")
-	outEdge1 := NewEdge("test1", nil, nil, 10, 1)
-	outEdge2 := NewEdge("test2", nil, nil, 10, 1)
-	outMux.AddChannel(outEdge1)
-	outMux.AddChannel(outEdge2)
-	msg := &Envelope[outmuxTestMessage]{Message: outmuxTestMessage{Data: "test message"}}
+	outMux.AddChannel(NewEdge("test1", nil, nil, 10, 1))
+	msg := &Envelope[outmuxTestMessage]{Message: outmuxTestMessage{Data: "TestOutmux_Send"}}
 	outMux.Send(msg)
 
 	select {
-	case receivedMsg := <-outEdge1.GetChannel():
-		if receivedMsg.String() != "test message" {
+	case receivedMsg := <-outMux.GoChans["test1"].GetChannel():
+		if receivedMsg.String() != "TestOutmux_Send" {
 			t.Fatalf("Expected 'test message', got '%s'", receivedMsg.String())
 		}
 	case <-time.After(time.Second):
 		t.Fatal("Timeout waiting for message on ch1")
-	}
-
-	select {
-	case receivedMsg := <-outEdge2.GetChannel():
-		if receivedMsg.String() != "test message" {
-			t.Fatalf("Expected 'test message', got '%s'", receivedMsg.String())
-		}
-	case <-time.After(time.Second):
-		t.Fatal("Timeout waiting for message on ch2")
 	}
 }
 

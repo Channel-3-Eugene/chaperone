@@ -16,36 +16,17 @@ func NewGraph(ctx context.Context, name string, config *Config) *Graph {
 	}
 }
 
-func (g *Graph) AddSupervisor(parent EventWorker, supervisor EventWorker, nodes ...EnvelopeWorker) *Graph {
+func (g *Graph) AddSupervisor(parent EventWorker, supervisor EventWorker) *Graph {
 	g.Supervisors[(supervisor).Name()] = supervisor
-	for _, node := range nodes {
-		supervisor.AddNode(node)
+	if parent != nil {
+		parent.AddChildSupervisor(supervisor)
 	}
 	return g
 }
 
-// func (g *Graph) AddSupervisor(supervisor any, nodes ...any) *Graph {
-// 	s, ok := supervisor.(*Supervisor[Message, Message])
-// 	if !ok {
-// 		panic("supervisor is incorrect type")
-// 	}
-// 	g.Supervisors[s.Name] = supervisor
-// 	for _, node := range nodes {
-// 		n, ok := node.(*Node[Message, Message])
-// 		if !ok {
-// 			panic("node is incorrect type")
-// 		}
-// 		s.AddNode(n)
-// 	}
-// 	return g
-// }
-
-func (g *Graph) AddNode(node EnvelopeWorker) *Graph {
-	n, ok := node.(*Node[Message, Message])
-	if !ok {
-		panic("node is incorrect type")
-	}
-	g.Nodes[n.Name()] = node
+func (g *Graph) AddNode(supervisor EventWorker, node EnvelopeWorker) *Graph {
+	g.Nodes[node.Name()] = node
+	supervisor.AddNode(node)
 	return g
 }
 

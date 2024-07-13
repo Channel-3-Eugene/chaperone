@@ -68,8 +68,8 @@ func TestGraph_AddSupervisor(t *testing.T) {
 
 		assert.Contains(t, graph.Supervisors, parentSupervisorName)
 		assert.Contains(t, graph.Supervisors, childSupervisorName)
-		assert.Equal(t, parentSupervisorName, supervisor1.Name)
-		assert.Equal(t, childSupervisorName, supervisor2.Name)
+		assert.Equal(t, parentSupervisorName, supervisor1.Name())
+		assert.Equal(t, childSupervisorName, supervisor2.Name())
 	})
 }
 
@@ -86,12 +86,12 @@ func TestGraph_AddNode(t *testing.T) {
 
 		handler := &graphTestHandler{}
 		node := NewNode[graphTestMessage, graphTestMessage](ctx, nodeName, handler)
-		graph.AddNode(node)
+		graph.AddNode(supervisor, node)
 
 		supervisor.AddNode(node)
 
 		assert.Contains(t, graph.Nodes, nodeName)
-		assert.Equal(t, nodeName, node.Name)
+		assert.Equal(t, nodeName, node.Name())
 		assert.Equal(t, handler, node.Handler)
 		assert.Contains(t, supervisor.Nodes, nodeName)
 		assert.Equal(t, node, supervisor.Nodes[nodeName])
@@ -114,14 +114,14 @@ func TestGraph_AddEdge(t *testing.T) {
 		edge := NewEdge("test edge", node1, node2, 10, 1)
 
 		graph := NewGraph(ctx, "graph", &Config{}).
-			AddSupervisor(nil, supervisor, node1, node2).
-			AddNode(node1).
-			AddNode(node2)
+			AddSupervisor(nil, supervisor).
+			AddNode(supervisor, node1).
+			AddNode(supervisor, node2)
 
 		graph.AddEdge(edge)
 
 		// Verify channels are set up correctly
-		assert.Equal(t, node1.Out.Name, "test edge")
+		assert.Equal(t, "Node1:output", node1.Out.Name)
 		assert.Contains(t, node2.In, "test edge")
 
 		// Verify the same channel is being used
@@ -163,9 +163,9 @@ func TestGraph_Start(t *testing.T) {
 		edge := NewEdge("test edge", node1, node2, 10, 1)
 
 		graph := NewGraph(ctx, "graph", &Config{}).
-			AddSupervisor(nil, supervisor, node1, node2).
-			AddNode(node1).
-			AddNode(node2).
+			AddSupervisor(nil, supervisor).
+			AddNode(supervisor, node1).
+			AddNode(supervisor, node2).
 			AddEdge(edge)
 
 		// Start the graph

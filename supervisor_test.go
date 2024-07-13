@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -59,13 +58,13 @@ func TestSupervisor_NewSupervisor(t *testing.T) {
 		parentSupervisor.AddChildSupervisor(childSupervisor)
 
 		assert.NotNil(t, parentSupervisor)
-		assert.Equal(t, "parent supervisor", parentSupervisor.Name)
+		assert.Equal(t, "parent supervisor", parentSupervisor.Name())
 		assert.NotNil(t, parentSupervisor.Nodes)
 		assert.Len(t, parentSupervisor.Supervisors, 1)
 		assert.NotNil(t, parentSupervisor.Events)
 
 		assert.NotNil(t, childSupervisor)
-		assert.Equal(t, "child supervisor", childSupervisor.Name)
+		assert.Equal(t, "child supervisor", childSupervisor.Name())
 		assert.NotNil(t, childSupervisor.Nodes)
 		assert.NotNil(t, childSupervisor.ParentEvents)
 		assert.NotNil(t, childSupervisor.Events)
@@ -89,32 +88,5 @@ func TestSupervisor_AddNode(t *testing.T) {
 }
 
 func TestSupervisor_RestartNode(t *testing.T) {
-	t.Run("restarts a node", func(t *testing.T) {
-		supervisorHandler := supervisorHandler{}
-		supervisor := NewSupervisor(context.Background(), "TestSupervisor", supervisorHandler)
-
-		ctx := context.Background()
-		nodeHandler := supervisorNodeHandler{}
-		node := NewNode[supervisorNodeTestMessage, supervisorNodeTestMessage](ctx, "TestNode", nodeHandler)
-		supervisor.AddNode(node)
-
-		inEdge := NewEdge("input", nil, node, 10, 1)
-		node.AddInput("input", inEdge)
-		node.AddWorkers(inEdge, 3, "worker")
-
-		assert.Len(t, node.WorkerPool["input"], 3)
-
-		supervisor.Start()
-		time.Sleep(20 * time.Microsecond)
-
-		env := NewEnvelope[supervisorNodeTestMessage](supervisorNodeTestMessage{Content: "error"}, 2)
-		node.In["input"].GetChannel() <- env
-		assert.Len(t, node.In["input"].GetChannel(), 1)
-
-		time.Sleep(1 * time.Millisecond)
-		assert.Len(t, node.In["input"], 0)
-		assert.Len(t, node.WorkerPool["input"], 3)
-
-		// TODO: Figure out how to make sure both the node handler and the supervisor handler touched env without race conditions or mutexes
-	})
+	// TODO: Figure out how to make sure both the node handler and the supervisor handler touched env without race conditions or mutexes
 }

@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+const NUMRUNS = 10
+
 type benchmarkMessage struct {
 	Content [180]byte
 }
@@ -51,9 +53,9 @@ func (h *benchmarkSupervisorHandler) Handle(_ context.Context, _ Message) error 
 func BenchmarkGraph(b *testing.B) {
 	ctx := context.Background()
 
-	bufferSize := 100_000_000
-	numWorkers := 4
-	totalMessages := 5_965_232
+	bufferSize := 500_000_000
+	numWorkers := 2
+	totalMessages := 10_000_000
 
 	SupervisorName := "supervisor1"
 	Supervisor := NewSupervisor(ctx, SupervisorName, &benchmarkSupervisorHandler{})
@@ -77,61 +79,69 @@ func BenchmarkGraph(b *testing.B) {
 	graph := NewGraph(ctx, "graph", &Config{}).
 		AddSupervisor(nil, Supervisor).
 		AddEdge(Edge0).
-		AddNode(Node1).
+		AddNode(Supervisor, Node1).
 		AddEdge(Edge1).
-		AddNode(Node2).
+		AddNode(Supervisor, Node2).
 		AddEdge(Edge2).
-		AddNode(Node3).
+		AddNode(Supervisor, Node3).
 		AddEdge(Edge3).
-		AddNode(Node4).
+		AddNode(Supervisor, Node4).
 		AddEdge(Edge4).
-		AddNode(Node5).
+		AddNode(Supervisor, Node5).
 		AddEdge(Edge5).
 		Start()
 
 	fmt.Println("Graph started")
 	fmt.Printf("Number of nodes: %d\n", len(graph.Nodes))
 
-	sendCount := 0
 	startTime := time.Now()
+	totalEnvelopes := 0
 
-	wg := sync.WaitGroup{}
-	wg.Add(totalMessages)
+	for i := 0; i < NUMRUNS; i++ {
+		sendCount := 0
+		startTime := time.Now()
 
-	go func() {
-		for i := 0; i < totalMessages; i++ {
-			msg := benchmarkMessage{}
-			msg.SetContent("test message")
-			env := &Envelope[benchmarkMessage]{Message: msg}
-			Edge0.GetChannel() <- env
-			sendCount++
-		}
-	}()
+		wg := sync.WaitGroup{}
+		wg.Add(totalMessages)
 
-	doneCount := 0
-	for range Edge5.GetChannel() {
-		doneCount++
-		wg.Done()
-		if doneCount == totalMessages {
-			break
-		}
-		for _, edge := range graph.Edges {
-			if len(edge.GetChannel()) == cap(edge.GetChannel()) {
-				fmt.Printf("Buffer for channel %s full: %d\n", edge.Name(), len(edge.GetChannel()))
+		go func() {
+			for i := 0; i < totalMessages; i++ {
+				msg := benchmarkMessage{}
+				msg.SetContent("test message")
+				env := &Envelope[benchmarkMessage]{Message: msg}
+				Edge0.GetChannel() <- env
+				sendCount++
+			}
+		}()
+
+		doneCount := 0
+		for range Edge5.GetChannel() {
+			doneCount++
+			wg.Done()
+			if doneCount == totalMessages {
+				break
+			}
+			for _, edge := range graph.Edges {
+				if len(edge.GetChannel()) == cap(edge.GetChannel()) {
+					fmt.Printf("Buffer for channel %s full: %d\n", edge.Name(), len(edge.GetChannel()))
+				}
 			}
 		}
+
+		wg.Wait()
+		elapsedTime := time.Since(startTime).Seconds()
+
+		envelopesPerSecond := float64(doneCount) / elapsedTime
+		totalEnvelopes += doneCount
+
+		fmt.Printf("Processed %d packets at %f packets per second for a bitrate of %d Mbps\n", totalMessages, envelopesPerSecond, bitrate(envelopesPerSecond))
 	}
 
-	wg.Wait()
 	elapsedTime := time.Since(startTime).Seconds()
-
-	envelopesPerSecond := float64(doneCount) / elapsedTime
-	fmt.Printf("Processed %f envelopes per second for a bitrate of %d Mbps\n", envelopesPerSecond, bitrate(envelopesPerSecond))
-
 	graph.Stop()
 
-	sumEnvelopesPerSecond := float64(doneCount) / elapsedTime
-	fmt.Printf("Average %f envelopes per second for a bitrate of %d Mbps\n", sumEnvelopesPerSecond, bitrate(sumEnvelopesPerSecond))
+	sumEnvelopesPerSecond := float64(totalEnvelopes) / elapsedTime
+	fmt.Printf("Average %f envelopes per second for a bitrate of %d Mbps over %d runs\n", sumEnvelopesPerSecond, bitrate(sumEnvelopesPerSecond), NUMRUNS)
 }
 
 func bitrate(eps float64) int {

@@ -38,9 +38,9 @@ func TestEvents_NewEvent(t *testing.T) {
 
 	for _, tt := range tests {
 		event := NewEvent(tt.level, err, env)
-		assert.Equal(t, tt.expected, event.Level, "Expected level to match")
+		assert.Equal(t, tt.expected, event.Level(), "Expected level to match")
 		assert.Equal(t, env.String(), event.envelope.String(), "Expected message to match")
-		assert.Equal(t, err, event.Event, "Expected error to match")
+		assert.Equal(t, err.Error(), event.Event(), "Expected error to match")
 	}
 }
 
@@ -53,13 +53,13 @@ func TestEvents_Error(t *testing.T) {
 	err := errors.New("Test error")
 	event := NewEvent(ErrorLevelError, err, env)
 
-	expected := fmt.Sprintf("[%s] %v", event.Level(), event.Event)
+	expected := fmt.Sprintf("[%s] %s", event.Level().String(), event.Event())
 	assert.Equal(t, expected, event.Error(), "Expected error string to match")
 
 	eventNoError := NewEvent(ErrorLevelInfo, nil, env)
-	expectedNoError := fmt.Sprintf("[%s] %s", eventNoError.Level(), eventNoError.String())
+	expectedNoError := fmt.Sprintf("[%s] %s", eventNoError.Level().String(), eventNoError.Event())
 	assert.Equal(t, expectedNoError, eventNoError.Error(), "Expected error string to match when no error is present")
-	assert.Nil(t, eventNoError.Event, "Expected error to be nil")
+	assert.Empty(t, eventNoError.Event(), "Expected error to be nil")
 }
 
 func TestEvents_Unwrap(t *testing.T) {

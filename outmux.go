@@ -10,18 +10,15 @@ func NewOutMux(name string) OutMux {
 
 func (o *OutMux) AddChannel(edge MessageCarrier) {
 	// Create a new output channel and goroutine for the edge.
-	outChan := edge
-	goChan := &Edge{
-		name:    "go-" + edge.Name(),
-		channel: make(chan Message, cap(edge.GetChannel())),
-	}
+	outChan := NewEdge("spur:"+edge.Name(), nil, nil, cap(edge.GetChannel()), 1) // Returns *Edge
+	goChan := edge.(*Edge)
 
-	go func(in, out MessageCarrier) {
-		for env := range in.GetChannel() {
-			out.GetChannel() <- env // Send the envelope to the output channel.
+	go func(in, out chan Message) {
+		for env := range in {
+			out <- env // Send the envelope to the output channel.
 		}
-		close(out.GetChannel()) // Close the output channel when the input channel is closed.
-	}(outChan, goChan)
+		close(out) // Close the output channel when the input channel is closed.
+	}(outChan.GetChannel(), goChan.GetChannel())
 
 	o.OutChans[outChan.Name()] = outChan
 	o.GoChans[goChan.Name()] = goChan

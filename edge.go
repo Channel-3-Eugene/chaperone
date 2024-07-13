@@ -3,7 +3,6 @@ package chaperone
 import "fmt"
 
 func NewEdge(name string, fn EnvelopeWorker, tn EnvelopeWorker, bufferSize int, numWorkers int) *Edge {
-	fmt.Printf("Creating edge on node %#v\n\n", fn)
 	edge := &Edge{
 		name:    name,
 		channel: make(chan Message, bufferSize),
@@ -23,19 +22,19 @@ func NewEdge(name string, fn EnvelopeWorker, tn EnvelopeWorker, bufferSize int, 
 	return edge
 }
 
-func (e Edge) Name() string {
+func (e *Edge) Name() string {
 	return e.name
 }
 
-func (e Edge) GetChannel() chan Message {
+func (e *Edge) GetChannel() chan Message {
 	return e.channel
 }
 
-func (e Edge) SetChannel(c chan Message) {
+func (e *Edge) SetChannel(c chan Message) {
 	e.channel = c
 }
 
-func (e Edge) Send(env Message) error {
+func (e *Edge) Send(env Message) error {
 	e.channel <- env
 	return nil
 }

@@ -38,13 +38,14 @@ func TestEdge_NewEdge(t *testing.T) {
 	node1 := NewNode[edgeTestMessage, edgeTestMessage](ctx, "node1", &edgeTestHandler{outChannelName: "output"})
 	node2 := NewNode[edgeTestMessage, edgeTestMessage](ctx, "node2", &edgeTestHandler{outChannelName: "output"})
 
-	edge := NewEdge("output", node1, node2, 10, 1)
+	edgeName := "edge1"
+	edge := NewEdge(edgeName, node1, node2, 10, 1)
 	assert.NotNil(t, edge)
 	assert.NotNil(t, edge.GetChannel())
 	assert.Equal(t, 10, cap(edge.GetChannel()))
 
-	assert.Equal(t, node1.Out.Name, "node1:output")
-	assert.Contains(t, node2.In, "node2:input")
+	assert.Equal(t, "node1:output", node1.Out.Name)
+	assert.Contains(t, node2.In, edgeName)
 
 	outChannel := node1.Out.GoChans["node2:input"]
 	inChannel := node2.In["node2:input"]
