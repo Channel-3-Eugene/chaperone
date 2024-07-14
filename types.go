@@ -35,8 +35,8 @@ type EvtHandler interface {
 type Worker struct {
 	ctx       context.Context
 	name      string
-	handler   EnvHandler
 	listening MessageCarrier // Each worker listens to a specific channel
+	handler   EnvHandler
 }
 
 type MessageCarrier interface { // Edge

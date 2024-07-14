@@ -65,7 +65,6 @@ func (n *Node[In, Out]) AddOutput(edge MessageCarrier) {
 }
 
 func (n *Node[In, Out]) Start() {
-
 	for _, workers := range n.WorkerPool {
 		for _, worker := range workers {
 			go n.startWorker(worker)
@@ -90,24 +89,40 @@ func (n *Node[In, Out]) startWorker(w *Worker) {
 		}
 	}()
 
-	for {
-		select {
-		case <-w.ctx.Done():
-			return
-		case env, ok := <-w.listening.GetChannel():
-			if !ok {
-				// Channel closed
+	evt := w.handler.Start(w.ctx)
+	if evt != nil {
+		if e, ok := evt.(*Event); ok {
+			n.handleWorkerEvent(w, e, nil)
+		} else {
+			newErr := NewEvent(ErrorLevelError, fmt.Errorf("worker %s returned invalid event", w.name), nil)
+			n.handleWorkerEvent(w, newErr, nil)
+		}
+	}
+
+	if len(n.In) > 1 {
+		for {
+			select {
+			case <-w.ctx.Done():
 				return
-			}
+			case env, ok := <-w.listening.GetChannel():
+				if !ok {
+					// Channel closed
+					return
+				}
 
-			newEnv, err := w.handler.Handle(n.ctx, env)
+				newEnv, err := w.handler.Handle(n.ctx, env)
 
-			if err != nil {
-				newErr := NewEvent(ErrorLevelError, err, env)
-				e := env.(*Envelope[In])
-				n.handleWorkerEvent(w, newErr, e)
-			} else {
-				n.Out.Send(newEnv)
+				if err != nil {
+					if evt, ok := err.(*Event); ok {
+						e := env.(*Envelope[In])
+						n.handleWorkerEvent(w, evt, e)
+					} else {
+						newErr := NewEvent(ErrorLevelError, err, nil)
+						n.handleWorkerEvent(w, newErr, nil)
+					}
+				} else {
+					n.Out.Send(newEnv)
+				}
 			}
 		}
 	}
@@ -136,12 +151,13 @@ func (n *Node[In, Out]) Restart(evt *Event) {
 }
 
 func (n *Node[In, Out]) handleWorkerEvent(_ *Worker, ev *Event, env *Envelope[In]) {
-	env.NumRetries--
-	if env.NumRetries > 0 {
-		// Try again?
-		n.In["loopback"].GetChannel() <- env
-	} else {
-		// Send event to supervisor
-		n.Events.GetChannel() <- ev
+	if env != nil {
+		env.NumRetries--
+		if env.NumRetries > 0 {
+			// Try again?
+			n.In["loopback"].GetChannel() <- env
+		}
 	}
+	// Send event to supervisor
+	n.Events.GetChannel() <- ev
 }

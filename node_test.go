@@ -158,3 +158,18 @@ func TestNode_RestartWorkers(t *testing.T) {
 	assert.Equal(t, "input-worker-2", node.WorkerPool[inEdge.Name()][0].name)
 	assert.Equal(t, "input-worker-3", node.WorkerPool[inEdge.Name()][1].name)
 }
+
+func TestNode_NoAdditionalInputChannels(t *testing.T) {
+	handler := &nodeTestHandler{}
+	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler)
+
+	// Start the node without additional input channels
+	node.Start()
+
+	// Give some time for the worker to start
+	time.Sleep(10 * time.Millisecond)
+
+	// Ensure no additional workers were started
+	assert.Len(t, node.WorkerPool, 1) // Only loopback worker should exist
+	assert.Equal(t, "loopback-1", node.WorkerPool["loopback"][0].name)
+}
