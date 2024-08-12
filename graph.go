@@ -13,12 +13,14 @@ func NewGraph(ctx context.Context, name string, config *Config) *Graph {
 		Nodes:       make(map[string]EnvelopeWorker),
 		Supervisors: make(map[string]EventWorker),
 		Edges:       make([]MessageCarrier, 0),
+		done:        make(chan struct{}),
 	}
 }
 
 func (g *Graph) AddSupervisor(parent EventWorker, supervisor EventWorker) *Graph {
-	g.Supervisors[(supervisor).Name()] = supervisor
-	if parent != nil {
+	if parent == nil {
+		g.Supervisors[(supervisor).Name()] = supervisor
+	} else {
 		parent.AddChildSupervisor(supervisor)
 	}
 	return g
@@ -44,4 +46,8 @@ func (g *Graph) Start() *Graph {
 
 func (g *Graph) Stop() {
 	g.cancel()
+}
+
+func (g *Graph) Done() chan struct{} {
+	return g.done
 }

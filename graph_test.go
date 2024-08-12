@@ -67,7 +67,7 @@ func TestGraph_AddSupervisor(t *testing.T) {
 		graph.AddSupervisor(supervisor1, supervisor2)
 
 		assert.Contains(t, graph.Supervisors, parentSupervisorName)
-		assert.Contains(t, graph.Supervisors, childSupervisorName)
+		assert.Contains(t, supervisor1.Supervisors, childSupervisorName)
 		assert.Equal(t, parentSupervisorName, supervisor1.Name())
 		assert.Equal(t, childSupervisorName, supervisor2.Name())
 	})

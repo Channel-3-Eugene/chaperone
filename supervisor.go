@@ -58,6 +58,16 @@ func (s *Supervisor) Start() {
 			}
 		}()
 
+		evt := s.Handler.Start(s.ctx)
+		if evt != nil {
+			if e, ok := evt.(*Event); ok {
+				s.handleSupervisorEvent(e)
+			} else {
+				newErr := NewEvent(ErrorLevelError, fmt.Errorf("supervisor %s returned invalid event", s.name), nil)
+				s.handleSupervisorEvent(newErr)
+			}
+		}
+
 		for {
 			select {
 			case msg := <-s.Events.GetChannel():

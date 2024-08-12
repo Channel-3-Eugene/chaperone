@@ -112,4 +112,6 @@ type Graph struct {
 	Supervisors map[string]EventWorker
 	Nodes       map[string]EnvelopeWorker
 	Edges       []MessageCarrier
+
+	done chan struct{}
 }
