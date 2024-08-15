@@ -15,7 +15,7 @@ func NewEdge(name string, fn EnvelopeWorker, tn EnvelopeWorker, bufferSize int, 
 
 	// Set up the input channel and workers on the toNode
 	if tn != nil {
-		tn.AddInput(name, edge)
+		tn.AddInput(edge)
 		tn.AddWorkers(edge, numWorkers, fmt.Sprintf("%s-worker", name))
 	}
 

@@ -20,9 +20,7 @@ func (m testMessage) String() string {
 	return m.Content
 }
 
-type testHandler struct {
-	outChannelName string
-}
+type testHandler struct{}
 
 func (h *testHandler) Start(context.Context) error {
 	return nil
@@ -70,10 +68,10 @@ func TestChaperone_EndToEnd(t *testing.T) {
 	ChildSupervisorName := "child supervisor"
 	ChildSupervisor := NewSupervisor(ctx, ChildSupervisorName, &testSupervisorHandler{})
 	Node1Name := "node1"
-	Node1 := NewNode[testMessage, testMessage](ctx, Node1Name, &testHandler{outChannelName: "middle"})
+	Node1 := NewNode[testMessage, testMessage](ctx, Node1Name, &testHandler{})
 	startEdge := NewEdge("start", nil, Node1, 10, 1)
 	Node2Name := "node2"
-	Node2 := NewNode[testMessage, testMessage](ctx, Node2Name, &testHandler{outChannelName: "end"})
+	Node2 := NewNode[testMessage, testMessage](ctx, Node2Name, &testHandler{})
 	middleEdge := NewEdge("middle", Node1, Node2, 10, 1)
 	endEdge := NewEdge("end", Node2, nil, 10, 1)
 

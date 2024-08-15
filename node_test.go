@@ -60,7 +60,7 @@ func TestNode_StartStop(t *testing.T) {
 	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler)
 
 	inEdge := NewEdge("test", nil, node, 10, 1)
-	node.AddInput("input", inEdge)
+	node.AddInput(inEdge)
 	node.AddWorkers(inEdge, 1, "worker")
 	node.Start()
 
@@ -110,7 +110,7 @@ func TestNode_WorkerHandlesError(t *testing.T) {
 	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler)
 
 	inEdge := NewEdge("test input", nil, node, 10, 1)
-	node.AddInput("input", inEdge)
+	node.AddInput(inEdge)
 
 	node.Events = NewEdge("test events", nil, nil, 10, 1)
 

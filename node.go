@@ -56,8 +56,8 @@ func (n *Node[In, Out]) AddWorkers(edge MessageCarrier, num int, name string) {
 	}
 }
 
-func (n *Node[In, Out]) AddInput(name string, edge MessageCarrier) {
-	n.In[name] = edge
+func (n *Node[In, Out]) AddInput(edge MessageCarrier) {
+	n.In[edge.Name()] = edge
 }
 
 func (n *Node[In, Out]) AddOutput(edge MessageCarrier) {

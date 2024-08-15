@@ -60,7 +60,7 @@ type OutMux struct {
 type EnvelopeWorker interface { // Node
 	Name() string
 	AddOutput(MessageCarrier)
-	AddInput(string, MessageCarrier)
+	AddInput(MessageCarrier)
 	AddWorkers(MessageCarrier, int, string)
 	SetEvents(MessageCarrier)
 	Start()
