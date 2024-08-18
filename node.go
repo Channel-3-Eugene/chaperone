@@ -65,6 +65,8 @@ func (n *Node[In, Out]) AddOutput(edge MessageCarrier) {
 }
 
 func (n *Node[In, Out]) Start() {
+	fmt.Printf("Starting node %s\n", n.name)
+
 	for _, workers := range n.WorkerPool {
 		for _, worker := range workers {
 			go n.startWorker(worker)
@@ -90,6 +92,9 @@ func (n *Node[In, Out]) startWorker(w *Worker) {
 	}()
 
 	evt := w.handler.Start(w.ctx)
+
+	fmt.Printf("Worker %s started\n", w.name)
+
 	if evt != nil {
 		if e, ok := evt.(*Event); ok {
 			n.handleWorkerEvent(w, e, nil)

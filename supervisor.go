@@ -68,6 +68,8 @@ func (s *Supervisor) Start() {
 			}
 		}
 
+		fmt.Printf("Started supervisor %s\n", s.Name())
+
 		for {
 			select {
 			case msg := <-s.Events.GetChannel():
