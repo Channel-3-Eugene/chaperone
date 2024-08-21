@@ -29,6 +29,8 @@ func (h *graphTestHandler) Handle(_ context.Context, env Message) (Message, erro
 	return env, nil
 }
 
+func (h *graphTestHandler) Stop() {}
+
 type graphSupervisorTestHandler struct{}
 
 func (h *graphSupervisorTestHandler) Start(context.Context) error {
@@ -85,7 +87,7 @@ func TestGraph_AddNode(t *testing.T) {
 		graph.AddSupervisor(nil, supervisor)
 
 		handler := &graphTestHandler{}
-		node := NewNode[graphTestMessage, graphTestMessage](ctx, nodeName, handler)
+		node := NewNode[graphTestMessage, graphTestMessage](ctx, nodeName, handler, nil)
 		graph.AddNode(supervisor, node)
 
 		supervisor.AddNode(node)
@@ -95,6 +97,7 @@ func TestGraph_AddNode(t *testing.T) {
 		assert.Equal(t, handler, node.Handler)
 		assert.Contains(t, supervisor.Nodes, nodeName)
 		assert.Equal(t, node, supervisor.Nodes[nodeName])
+		assert.Len(t, node.WorkerPool["loopback"], 0)
 	})
 }
 
@@ -109,8 +112,8 @@ func TestGraph_AddEdge(t *testing.T) {
 		handler := &graphTestHandler{}
 
 		supervisor := NewSupervisor(ctx, supervisorName, &graphSupervisorTestHandler{})
-		node1 := NewNode[graphTestMessage, graphTestMessage](ctx, nodeName1, handler)
-		node2 := NewNode[graphTestMessage, graphTestMessage](ctx, nodeName2, handler)
+		node1 := NewNode[graphTestMessage, graphTestMessage](ctx, nodeName1, handler, nil)
+		node2 := NewNode[graphTestMessage, graphTestMessage](ctx, nodeName2, handler, nil)
 		edge := NewEdge("test edge", node1, node2, 10, 1)
 
 		graph := NewGraph(ctx, "graph", &Config{}).
@@ -158,8 +161,8 @@ func TestGraph_Start(t *testing.T) {
 		handler := &graphTestHandler{}
 
 		supervisor := NewSupervisor(ctx, "TestSupervisor", &graphSupervisorTestHandler{})
-		node1 := NewNode[graphTestMessage, graphTestMessage](ctx, "Node1", handler)
-		node2 := NewNode[graphTestMessage, graphTestMessage](ctx, "Node2", handler)
+		node1 := NewNode[graphTestMessage, graphTestMessage](ctx, "Node1", handler, nil)
+		node2 := NewNode[graphTestMessage, graphTestMessage](ctx, "Node2", handler, nil)
 		edge := NewEdge("test edge", node1, node2, 10, 1)
 
 		graph := NewGraph(ctx, "graph", &Config{}).

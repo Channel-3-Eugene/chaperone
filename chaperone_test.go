@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
-	"fmt"
 	"math/big"
 	"testing"
 	"time"
@@ -33,6 +32,8 @@ func (h *testHandler) Handle(ctx context.Context, env Message) (Message, error) 
 
 	return env, nil
 }
+
+func (h *testHandler) Stop() {}
 
 type testSupervisorHandler struct{}
 
@@ -68,10 +69,10 @@ func TestChaperone_EndToEnd(t *testing.T) {
 	ChildSupervisorName := "child supervisor"
 	ChildSupervisor := NewSupervisor(ctx, ChildSupervisorName, &testSupervisorHandler{})
 	Node1Name := "node1"
-	Node1 := NewNode[testMessage, testMessage](ctx, Node1Name, &testHandler{})
+	Node1 := NewNode[testMessage, testMessage](ctx, Node1Name, &testHandler{}, nil)
 	startEdge := NewEdge("start", nil, Node1, 10, 1)
 	Node2Name := "node2"
-	Node2 := NewNode[testMessage, testMessage](ctx, Node2Name, &testHandler{})
+	Node2 := NewNode[testMessage, testMessage](ctx, Node2Name, &testHandler{}, nil)
 	middleEdge := NewEdge("middle", Node1, Node2, 10, 1)
 	endEdge := NewEdge("end", Node2, nil, 10, 1)
 
@@ -101,7 +102,6 @@ func TestChaperone_EndToEnd(t *testing.T) {
 			assert.Equal(t, msg.String(), received.String(), "Expected to receive the same message in node2 input channel")
 		case <-time.After(1 * time.Second):
 			t.Error("Expected message in node2 output channel")
-			fmt.Printf("Envelope: %#v\n", env)
 		}
 	})
 

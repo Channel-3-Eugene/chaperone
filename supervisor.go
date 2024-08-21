@@ -68,8 +68,6 @@ func (s *Supervisor) Start() {
 			}
 		}
 
-		fmt.Printf("Started supervisor %s\n", s.Name())
-
 		for {
 			select {
 			case msg := <-s.Events.GetChannel():
@@ -94,13 +92,11 @@ func (s *Supervisor) Start() {
 
 	// Start all the supervisors
 	for _, supervisor := range s.Supervisors {
-		fmt.Printf("Starting supervisor %s\n", supervisor.Name())
 		go supervisor.Start()
 	}
 
 	// Start all the nodes
 	for _, node := range s.Nodes {
-		fmt.Printf("Starting node %s\n", node.Name())
 		go node.Start()
 	}
 }

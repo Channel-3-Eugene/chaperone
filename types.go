@@ -25,6 +25,7 @@ type Envelope[T Message] struct {
 type EnvHandler interface {
 	Start(ctx context.Context) error
 	Handle(ctx context.Context, env Message) (Message, error)
+	Stop()
 }
 
 type EvtHandler interface {
@@ -61,7 +62,8 @@ type EnvelopeWorker interface { // Node
 	Name() string
 	AddOutput(MessageCarrier)
 	AddInput(MessageCarrier)
-	AddWorkers(MessageCarrier, int, string)
+	AddWorkers(MessageCarrier, int, string, EnvHandler)
+	GetHandler() EnvHandler
 	SetEvents(MessageCarrier)
 	Start()
 	RestartWorkers()
@@ -69,12 +71,13 @@ type EnvelopeWorker interface { // Node
 }
 
 type Node[In, Out Message] struct {
-	ctx           context.Context
-	cancel        context.CancelFunc
-	name          string
-	Handler       EnvHandler
-	WorkerPool    map[string][]*Worker // Updated to map channels to workers
-	WorkerCounter uint64
+	ctx             context.Context
+	cancel          context.CancelFunc
+	name            string
+	Handler         EnvHandler
+	LoopbackHandler EnvHandler
+	WorkerPool      map[string][]*Worker // Updated to map channels to workers
+	WorkerCounter   uint64
 
 	In     map[string]MessageCarrier
 	Out    OutMux

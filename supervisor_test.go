@@ -31,6 +31,8 @@ func (h supervisorNodeHandler) Handle(ctx context.Context, env Message) (Message
 	return env, nil
 }
 
+func (h supervisorNodeHandler) Stop() {}
+
 type supervisorHandler struct{}
 
 func (h supervisorHandler) Start(ctx context.Context) error {
@@ -79,7 +81,7 @@ func TestSupervisor_AddNode(t *testing.T) {
 
 		ctx := context.Background()
 		nodeHandler := supervisorNodeHandler{}
-		node := NewNode[supervisorNodeTestMessage, supervisorNodeTestMessage](ctx, "TestNode", nodeHandler)
+		node := NewNode[supervisorNodeTestMessage, supervisorNodeTestMessage](ctx, "TestNode", nodeHandler, nil)
 		supervisor.AddNode(node)
 
 		assert.Contains(t, supervisor.Nodes, "TestNode")

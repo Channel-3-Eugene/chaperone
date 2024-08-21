@@ -7,23 +7,25 @@ import (
 	"sync/atomic"
 )
 
-func NewNode[In, Out Message](ctx context.Context, name string, handler EnvHandler) *Node[In, Out] {
+func NewNode[In, Out Message](ctx context.Context, name string, handler, lbHandler EnvHandler) *Node[In, Out] {
 	c, cancel := context.WithCancel(ctx)
 	n := &Node[In, Out]{
-		ctx:        c,
-		cancel:     cancel,
-		name:       name,
-		Handler:    handler,
-		WorkerPool: make(map[string][]*Worker),
-		In:         make(map[string]MessageCarrier),
-		Out:        NewOutMux(name + ":output"),
-		Events:     nil,
+		ctx:             c,
+		cancel:          cancel,
+		name:            name,
+		Handler:         handler,
+		LoopbackHandler: lbHandler,
+		WorkerPool:      make(map[string][]*Worker),
+		In:              make(map[string]MessageCarrier),
+		Out:             NewOutMux(name + ":output"),
+		Events:          nil,
 	}
+	loopbackName := fmt.Sprintf("%s-loopback", name)
 	n.In["loopback"] = &Edge{
 		name:    "loopback",
 		channel: make(chan Message, 1000),
 	}
-	n.AddWorkers(n.In["loopback"], 1, "loopback")
+	n.AddWorkers(n.In["loopback"], 1, loopbackName, lbHandler)
 	return n
 }
 
@@ -35,7 +37,11 @@ func (n *Node[In, Out]) SetEvents(edge MessageCarrier) {
 	n.Events = edge
 }
 
-func (n *Node[In, Out]) AddWorkers(edge MessageCarrier, num int, name string) {
+func (n *Node[In, Out]) AddWorkers(edge MessageCarrier, num int, name string, handler EnvHandler) {
+	if handler == nil {
+		return
+	}
+
 	if _, ok := n.In[edge.Name()]; !ok {
 		panic(fmt.Sprintf("channel %s not found", edge.Name()))
 	}
@@ -48,12 +54,16 @@ func (n *Node[In, Out]) AddWorkers(edge MessageCarrier, num int, name string) {
 		numWorker := atomic.AddUint64(&n.WorkerCounter, 1)
 		worker := &Worker{
 			name:      fmt.Sprintf("%s-%d", name, numWorker),
-			handler:   n.Handler,
+			handler:   handler,
 			ctx:       n.ctx,
 			listening: edge, // Associate worker with the specific channel
 		}
 		n.WorkerPool[edge.Name()] = append(n.WorkerPool[edge.Name()], worker)
 	}
+}
+
+func (n *Node[In, Out]) GetHandler() EnvHandler {
+	return n.Handler
 }
 
 func (n *Node[In, Out]) AddInput(edge MessageCarrier) {
@@ -65,11 +75,15 @@ func (n *Node[In, Out]) AddOutput(edge MessageCarrier) {
 }
 
 func (n *Node[In, Out]) Start() {
-	fmt.Printf("Starting node %s\n", n.name)
-
-	for _, workers := range n.WorkerPool {
-		for _, worker := range workers {
-			go n.startWorker(worker)
+	if len(n.WorkerPool) == 0 {
+		// start the node handler
+		n.Handler.Start(n.ctx)
+	} else {
+		// start the worker handlers in their goroutines
+		for _, workers := range n.WorkerPool {
+			for _, worker := range workers {
+				go n.startWorker(worker)
+			}
 		}
 	}
 }
@@ -92,8 +106,6 @@ func (n *Node[In, Out]) startWorker(w *Worker) {
 	}()
 
 	evt := w.handler.Start(w.ctx)
-
-	fmt.Printf("Worker %s started\n", w.name)
 
 	if evt != nil {
 		if e, ok := evt.(*Event); ok {

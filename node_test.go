@@ -30,38 +30,61 @@ func (h *nodeTestHandler) Handle(_ context.Context, env Message) (Message, error
 	return env, nil
 }
 
+func (h *nodeTestHandler) Stop() {}
+
+type nodeLoopbackTestHandler struct{}
+
+func (h *nodeLoopbackTestHandler) Start(context.Context) error {
+	return nil
+}
+
+func (h *nodeLoopbackTestHandler) Handle(_ context.Context, env Message) (Message, error) {
+	if env.String() == "error" {
+		return nil, errors.New("test error")
+	}
+	return env, nil
+}
+
+func (h *nodeLoopbackTestHandler) Stop() {}
+
 func TestNode_NewNode(t *testing.T) {
 	handler := &nodeTestHandler{}
+	lbHandler := &nodeLoopbackTestHandler{}
 
-	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler)
+	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler, lbHandler)
 
 	assert.NotNil(t, node)
 	assert.Equal(t, "testNode", node.Name())
 	assert.Equal(t, handler, node.Handler)
+	assert.Equal(t, lbHandler, node.LoopbackHandler)
 	assert.Nil(t, node.Events)
 }
 
 func TestNode_AddWorkers(t *testing.T) {
 	handler := &nodeTestHandler{}
-	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler)
+	lbHandler := &nodeLoopbackTestHandler{}
+	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler, lbHandler)
 
 	inEdge := NewEdge("test", nil, node, 10, 2)
 
 	assert.Len(t, node.WorkerPool[inEdge.Name()], 2)
 	// test-worker-1 is the loopback worker
+	assert.Equal(t, "testNode-loopback-1", node.WorkerPool["loopback"][0].name)
 	assert.Equal(t, "test-worker-2", node.WorkerPool["test"][0].name)
 	assert.Equal(t, "test-worker-3", node.WorkerPool["test"][1].name)
+	assert.Equal(t, lbHandler, node.WorkerPool["loopback"][0].handler)
 	assert.Equal(t, handler, node.WorkerPool["test"][0].handler)
 	assert.Equal(t, handler, node.WorkerPool["test"][1].handler)
 }
 
 func TestNode_StartStop(t *testing.T) {
 	handler := &nodeTestHandler{}
-	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler)
+	lbHandler := &nodeLoopbackTestHandler{}
+	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler, lbHandler)
 
 	inEdge := NewEdge("test", nil, node, 10, 1)
 	node.AddInput(inEdge)
-	node.AddWorkers(inEdge, 1, "worker")
+	node.AddWorkers(inEdge, 1, "worker", handler)
 	node.Start()
 
 	// Give some time for the worker to start
@@ -84,12 +107,12 @@ func TestNode_StartStop(t *testing.T) {
 
 func TestNode_WorkerHandlesMessage(t *testing.T) {
 	handler := &nodeTestHandler{}
-	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler)
+	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler, nil)
 
 	inEdge := NewEdge("inEdge", nil, node, 10, 1)
 	NewEdge("outEdge", node, nil, 10, 1)
 
-	node.AddWorkers(inEdge, 1, "worker")
+	node.AddWorkers(inEdge, 1, "worker", handler)
 	node.Start()
 
 	// Send a message to the input channel
@@ -107,14 +130,14 @@ func TestNode_WorkerHandlesMessage(t *testing.T) {
 
 func TestNode_WorkerHandlesError(t *testing.T) {
 	handler := &nodeTestHandler{}
-	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler)
+	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler, nil)
 
 	inEdge := NewEdge("test input", nil, node, 10, 1)
 	node.AddInput(inEdge)
 
 	node.Events = NewEdge("test events", nil, nil, 10, 1)
 
-	node.AddWorkers(inEdge, 1, "worker")
+	node.AddWorkers(inEdge, 1, "worker", handler)
 	node.Start()
 
 	// Send a message that will cause an error
@@ -135,7 +158,7 @@ func TestNode_WorkerHandlesError(t *testing.T) {
 
 func TestNode_RestartWorkers(t *testing.T) {
 	handler := &nodeTestHandler{}
-	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler)
+	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler, nil)
 
 	inEdge := NewEdge("input", nil, node, 10, 2)
 
@@ -155,13 +178,13 @@ func TestNode_RestartWorkers(t *testing.T) {
 
 	// Verify workers have been restarted
 	assert.Len(t, node.WorkerPool[inEdge.Name()], 2)
-	assert.Equal(t, "input-worker-2", node.WorkerPool[inEdge.Name()][0].name)
-	assert.Equal(t, "input-worker-3", node.WorkerPool[inEdge.Name()][1].name)
+	assert.Equal(t, "input-worker-1", node.WorkerPool[inEdge.Name()][0].name)
+	assert.Equal(t, "input-worker-2", node.WorkerPool[inEdge.Name()][1].name)
 }
 
 func TestNode_NoAdditionalInputChannels(t *testing.T) {
 	handler := &nodeTestHandler{}
-	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler)
+	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler, handler)
 
 	// Start the node without additional input channels
 	node.Start()
@@ -171,5 +194,5 @@ func TestNode_NoAdditionalInputChannels(t *testing.T) {
 
 	// Ensure no additional workers were started
 	assert.Len(t, node.WorkerPool, 1) // Only loopback worker should exist
-	assert.Equal(t, "loopback-1", node.WorkerPool["loopback"][0].name)
+	assert.Equal(t, "testNode-loopback-1", node.WorkerPool["loopback"][0].name)
 }

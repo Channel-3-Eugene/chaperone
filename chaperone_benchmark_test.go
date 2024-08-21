@@ -40,6 +40,8 @@ func (h *benchmarkHandler) Handle(_ context.Context, env Message) (Message, erro
 	return env, nil
 }
 
+func (h *benchmarkHandler) Stop() {}
+
 type benchmarkSupervisorHandler struct{}
 
 func (h *benchmarkSupervisorHandler) Start(context.Context) error {
@@ -60,19 +62,19 @@ func BenchmarkGraph(b *testing.B) {
 	SupervisorName := "supervisor1"
 	Supervisor := NewSupervisor(ctx, SupervisorName, &benchmarkSupervisorHandler{})
 	Node1Name := "node1"
-	Node1 := NewNode[benchmarkMessage, benchmarkMessage](ctx, Node1Name, &benchmarkHandler{outChannelName: "out1"})
+	Node1 := NewNode[benchmarkMessage, benchmarkMessage](ctx, Node1Name, &benchmarkHandler{outChannelName: "out1"}, nil)
 	Edge0 := NewEdge("in", nil, Node1, bufferSize, numWorkers)
 	Node2Name := "node2"
-	Node2 := NewNode[benchmarkMessage, benchmarkMessage](ctx, Node2Name, &benchmarkHandler{outChannelName: "out2"})
+	Node2 := NewNode[benchmarkMessage, benchmarkMessage](ctx, Node2Name, &benchmarkHandler{outChannelName: "out2"}, nil)
 	Edge1 := NewEdge("out1", Node1, Node2, bufferSize, numWorkers)
 	Node3Name := "node3"
-	Node3 := NewNode[benchmarkMessage, benchmarkMessage](ctx, Node3Name, &benchmarkHandler{outChannelName: "out3"})
+	Node3 := NewNode[benchmarkMessage, benchmarkMessage](ctx, Node3Name, &benchmarkHandler{outChannelName: "out3"}, nil)
 	Edge2 := NewEdge("out2", Node2, Node3, bufferSize, numWorkers)
 	Node4Name := "node4"
-	Node4 := NewNode[benchmarkMessage, benchmarkMessage](ctx, Node4Name, &benchmarkHandler{outChannelName: "out4"})
+	Node4 := NewNode[benchmarkMessage, benchmarkMessage](ctx, Node4Name, &benchmarkHandler{outChannelName: "out4"}, nil)
 	Edge3 := NewEdge("out3", Node3, Node4, bufferSize, numWorkers)
 	Node5Name := "node5"
-	Node5 := NewNode[benchmarkMessage, benchmarkMessage](ctx, Node5Name, &benchmarkHandler{outChannelName: "out"})
+	Node5 := NewNode[benchmarkMessage, benchmarkMessage](ctx, Node5Name, &benchmarkHandler{outChannelName: "out"}, nil)
 	Edge4 := NewEdge("out4", Node4, Node5, bufferSize, numWorkers)
 	Edge5 := NewEdge("out", Node5, nil, bufferSize, numWorkers)
 

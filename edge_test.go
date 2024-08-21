@@ -32,11 +32,13 @@ func (h *edgeTestHandler) Handle(ctx context.Context, env Message) (Message, err
 	return env, nil
 }
 
+func (h *edgeTestHandler) Stop() {}
+
 func TestEdge_NewEdge(t *testing.T) {
 	ctx := context.Background()
 
-	node1 := NewNode[edgeTestMessage, edgeTestMessage](ctx, "node1", &edgeTestHandler{outChannelName: "output"})
-	node2 := NewNode[edgeTestMessage, edgeTestMessage](ctx, "node2", &edgeTestHandler{outChannelName: "output"})
+	node1 := NewNode[edgeTestMessage, edgeTestMessage](ctx, "node1", &edgeTestHandler{outChannelName: "output"}, nil)
+	node2 := NewNode[edgeTestMessage, edgeTestMessage](ctx, "node2", &edgeTestHandler{outChannelName: "output"}, nil)
 
 	edgeName := "edge1"
 	edge := NewEdge(edgeName, node1, node2, 10, 1)
