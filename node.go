@@ -109,9 +109,11 @@ func (n *Node[In, Out]) startWorker(w *Worker) {
 
 	if evt != nil {
 		if e, ok := evt.(*Event); ok {
+			fmt.Printf("Worker %s error: %s\n", w.name, evt.Error())
 			n.handleWorkerEvent(w, e, nil)
 		} else {
 			newErr := NewEvent(ErrorLevelError, fmt.Errorf("worker %s returned invalid event", w.name), nil)
+			fmt.Printf("Worker %s error: %s\n", w.name, newErr.Error())
 			n.handleWorkerEvent(w, newErr, nil)
 		}
 	}
@@ -124,6 +126,7 @@ func (n *Node[In, Out]) startWorker(w *Worker) {
 			case env, ok := <-w.listening.GetChannel():
 				if !ok {
 					// Channel closed
+					fmt.Printf("Worker %s channel closed\n", w.name)
 					return
 				}
 
@@ -132,9 +135,11 @@ func (n *Node[In, Out]) startWorker(w *Worker) {
 				if err != nil {
 					if evt, ok := err.(*Event); ok {
 						e := env.(*Envelope[In])
+						fmt.Printf("Worker %s error: %s\n", w.name, evt.Error())
 						n.handleWorkerEvent(w, evt, e)
 					} else {
 						newErr := NewEvent(ErrorLevelError, err, nil)
+						fmt.Printf("Worker %s error: %s\n", w.name, evt.Error())
 						n.handleWorkerEvent(w, newErr, nil)
 					}
 				} else {
@@ -176,5 +181,6 @@ func (n *Node[In, Out]) handleWorkerEvent(_ *Worker, ev *Event, env *Envelope[In
 		}
 	}
 	// Send event to supervisor
+	fmt.Printf("Node %s event: %s\n", n.Name(), ev.Error())
 	n.Events.GetChannel() <- ev
 }
