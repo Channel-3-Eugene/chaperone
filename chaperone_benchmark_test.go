@@ -60,25 +60,25 @@ func BenchmarkGraph(b *testing.B) {
 	totalMessages := 10_000_000
 
 	SupervisorName := "supervisor1"
-	Supervisor := NewSupervisor(ctx, SupervisorName, &benchmarkSupervisorHandler{})
+	Supervisor := NewSupervisor(SupervisorName, &benchmarkSupervisorHandler{})
 	Node1Name := "node1"
-	Node1 := NewNode[benchmarkMessage, benchmarkMessage](ctx, Node1Name, &benchmarkHandler{outChannelName: "out1"}, nil)
+	Node1 := NewNode[benchmarkMessage, benchmarkMessage](Node1Name, &benchmarkHandler{outChannelName: "out1"}, nil)
 	Edge0 := NewEdge("in", nil, Node1, bufferSize, numWorkers)
 	Node2Name := "node2"
-	Node2 := NewNode[benchmarkMessage, benchmarkMessage](ctx, Node2Name, &benchmarkHandler{outChannelName: "out2"}, nil)
+	Node2 := NewNode[benchmarkMessage, benchmarkMessage](Node2Name, &benchmarkHandler{outChannelName: "out2"}, nil)
 	Edge1 := NewEdge("out1", Node1, Node2, bufferSize, numWorkers)
 	Node3Name := "node3"
-	Node3 := NewNode[benchmarkMessage, benchmarkMessage](ctx, Node3Name, &benchmarkHandler{outChannelName: "out3"}, nil)
+	Node3 := NewNode[benchmarkMessage, benchmarkMessage](Node3Name, &benchmarkHandler{outChannelName: "out3"}, nil)
 	Edge2 := NewEdge("out2", Node2, Node3, bufferSize, numWorkers)
 	Node4Name := "node4"
-	Node4 := NewNode[benchmarkMessage, benchmarkMessage](ctx, Node4Name, &benchmarkHandler{outChannelName: "out4"}, nil)
+	Node4 := NewNode[benchmarkMessage, benchmarkMessage](Node4Name, &benchmarkHandler{outChannelName: "out4"}, nil)
 	Edge3 := NewEdge("out3", Node3, Node4, bufferSize, numWorkers)
 	Node5Name := "node5"
-	Node5 := NewNode[benchmarkMessage, benchmarkMessage](ctx, Node5Name, &benchmarkHandler{outChannelName: "out"}, nil)
+	Node5 := NewNode[benchmarkMessage, benchmarkMessage](Node5Name, &benchmarkHandler{outChannelName: "out"}, nil)
 	Edge4 := NewEdge("out4", Node4, Node5, bufferSize, numWorkers)
 	Edge5 := NewEdge("out", Node5, nil, bufferSize, numWorkers)
 
-	graph := NewGraph(ctx, "graph", &Config{}).
+	graph := NewGraph("graph", &Config{}).
 		AddSupervisor(nil, Supervisor).
 		AddEdge(Edge0).
 		AddNode(Supervisor, Node1).
@@ -91,7 +91,7 @@ func BenchmarkGraph(b *testing.B) {
 		AddEdge(Edge4).
 		AddNode(Supervisor, Node5).
 		AddEdge(Edge5).
-		Start()
+		Start(ctx)
 
 	fmt.Println("Graph started")
 	fmt.Printf("Number of nodes: %d\n", len(graph.Nodes))

@@ -43,12 +43,9 @@ func (h *graphSupervisorTestHandler) Handle(_ context.Context, evt Message) erro
 
 func TestGraph_NewGraph(t *testing.T) {
 	t.Run("creates a new graph with the given context", func(t *testing.T) {
-		ctx := context.Background()
-		graph := NewGraph(ctx, "graph", &Config{})
+		graph := NewGraph("graph", &Config{})
 
 		assert.NotNil(t, graph)
-		assert.NotNil(t, graph.ctx)
-		assert.NotNil(t, graph.cancel)
 		assert.Equal(t, "graph", graph.Name)
 		assert.NotNil(t, graph.Nodes)
 		assert.NotNil(t, graph.Supervisors)
@@ -57,13 +54,12 @@ func TestGraph_NewGraph(t *testing.T) {
 
 func TestGraph_AddSupervisor(t *testing.T) {
 	t.Run("adds a supervisor to the graph", func(t *testing.T) {
-		ctx := context.Background()
-		graph := NewGraph(ctx, "graph", &Config{})
+		graph := NewGraph("graph", &Config{})
 
 		parentSupervisorName := "parent supervisor"
 		childSupervisorName := "child supervisor"
-		supervisor1 := NewSupervisor(ctx, "parent supervisor", &graphSupervisorTestHandler{})
-		supervisor2 := NewSupervisor(ctx, "child supervisor", &graphSupervisorTestHandler{})
+		supervisor1 := NewSupervisor("parent supervisor", &graphSupervisorTestHandler{})
+		supervisor2 := NewSupervisor("child supervisor", &graphSupervisorTestHandler{})
 
 		graph.AddSupervisor(nil, supervisor1)
 		graph.AddSupervisor(supervisor1, supervisor2)
@@ -77,20 +73,17 @@ func TestGraph_AddSupervisor(t *testing.T) {
 
 func TestGraph_AddNode(t *testing.T) {
 	t.Run("adds a node to the graph and assigns it to a supervisor", func(t *testing.T) {
-		ctx := context.Background()
-		graph := NewGraph(ctx, "graph", &Config{})
+		graph := NewGraph("graph", &Config{})
 
 		supervisorName := "Test Supervisor"
 		nodeName := "Test Node"
 
-		supervisor := NewSupervisor(ctx, supervisorName, &graphSupervisorTestHandler{})
+		supervisor := NewSupervisor(supervisorName, &graphSupervisorTestHandler{})
 		graph.AddSupervisor(nil, supervisor)
 
 		handler := &graphTestHandler{}
-		node := NewNode[graphTestMessage, graphTestMessage](ctx, nodeName, handler, nil)
+		node := NewNode[graphTestMessage, graphTestMessage](nodeName, handler, nil)
 		graph.AddNode(supervisor, node)
-
-		supervisor.AddNode(node)
 
 		assert.Contains(t, graph.Nodes, nodeName)
 		assert.Equal(t, nodeName, node.Name())
@@ -103,20 +96,18 @@ func TestGraph_AddNode(t *testing.T) {
 
 func TestGraph_AddEdge(t *testing.T) {
 	t.Run("adds an edge between two nodes", func(t *testing.T) {
-		ctx := context.Background()
-
 		supervisorName := "TestSupervisor"
 		nodeName1 := "Node1"
 		nodeName2 := "Node2"
 
 		handler := &graphTestHandler{}
 
-		supervisor := NewSupervisor(ctx, supervisorName, &graphSupervisorTestHandler{})
-		node1 := NewNode[graphTestMessage, graphTestMessage](ctx, nodeName1, handler, nil)
-		node2 := NewNode[graphTestMessage, graphTestMessage](ctx, nodeName2, handler, nil)
+		supervisor := NewSupervisor(supervisorName, &graphSupervisorTestHandler{})
+		node1 := NewNode[graphTestMessage, graphTestMessage](nodeName1, handler, nil)
+		node2 := NewNode[graphTestMessage, graphTestMessage](nodeName2, handler, nil)
 		edge := NewEdge("test edge", node1, node2, 10, 1)
 
-		graph := NewGraph(ctx, "graph", &Config{}).
+		graph := NewGraph("graph", &Config{}).
 			AddSupervisor(nil, supervisor).
 			AddNode(supervisor, node1).
 			AddNode(supervisor, node2)
@@ -160,12 +151,12 @@ func TestGraph_Start(t *testing.T) {
 		ctx := context.Background()
 		handler := &graphTestHandler{}
 
-		supervisor := NewSupervisor(ctx, "TestSupervisor", &graphSupervisorTestHandler{})
-		node1 := NewNode[graphTestMessage, graphTestMessage](ctx, "Node1", handler, nil)
-		node2 := NewNode[graphTestMessage, graphTestMessage](ctx, "Node2", handler, nil)
+		supervisor := NewSupervisor("TestSupervisor", &graphSupervisorTestHandler{})
+		node1 := NewNode[graphTestMessage, graphTestMessage]("Node1", handler, nil)
+		node2 := NewNode[graphTestMessage, graphTestMessage]("Node2", handler, nil)
 		edge := NewEdge("test edge", node1, node2, 10, 1)
 
-		graph := NewGraph(ctx, "graph", &Config{}).
+		graph := NewGraph("graph", &Config{}).
 			AddSupervisor(nil, supervisor).
 			AddNode(supervisor, node1).
 			AddNode(supervisor, node2).
@@ -173,7 +164,7 @@ func TestGraph_Start(t *testing.T) {
 
 		// Start the graph
 		assert.NotPanics(t, func() {
-			graph.Start()
+			graph.Start(ctx)
 		})
 	})
 }

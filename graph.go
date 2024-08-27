@@ -4,11 +4,8 @@ import (
 	"context"
 )
 
-func NewGraph(ctx context.Context, name string, config *Config) *Graph {
-	ctx, cancel := context.WithCancel(ctx)
+func NewGraph(name string, config *Config) *Graph {
 	return &Graph{
-		ctx:         ctx,
-		cancel:      cancel,
 		Name:        name,
 		Nodes:       make(map[string]EnvelopeWorker),
 		Supervisors: make(map[string]EventWorker),
@@ -28,7 +25,8 @@ func (g *Graph) AddSupervisor(parent EventWorker, supervisor EventWorker) *Graph
 
 func (g *Graph) AddNode(supervisor EventWorker, node EnvelopeWorker) *Graph {
 	g.Nodes[node.Name()] = node
-	supervisor.AddNode(node)
+	supe := supervisor.(*Supervisor)
+	supe.addNode(node)
 	return g
 }
 
@@ -37,17 +35,21 @@ func (g *Graph) AddEdge(edge MessageCarrier) *Graph {
 	return g
 }
 
-func (g *Graph) Start() *Graph {
+func (g *Graph) Start(ctx context.Context) *Graph {
+	ctx, cancel := context.WithCancel(ctx)
+	g.ctx = ctx
+	g.cancel = cancel
+
 	for _, supervisor := range g.Supervisors {
-		supervisor.Start()
+		supervisor.Start(ctx)
 	}
 	return g
 }
 
-func (g *Graph) Stop() {
-	g.cancel()
-}
+func (g *Graph) Stop() *Graph {
+	for _, supervisor := range g.Supervisors {
+		supervisor.Stop()
+	}
 
-func (g *Graph) Done() chan struct{} {
-	return g.done
+	return g
 }

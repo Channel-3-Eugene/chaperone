@@ -55,8 +55,8 @@ func (h supervisorHandler) Handle(ctx context.Context, evt Message) error {
 func TestSupervisor_NewSupervisor(t *testing.T) {
 	t.Run("creates a new supervisor with the given name", func(t *testing.T) {
 		handler := supervisorHandler{}
-		parentSupervisor := NewSupervisor(context.Background(), "parent supervisor", handler)
-		childSupervisor := NewSupervisor(context.Background(), "child supervisor", handler)
+		parentSupervisor := NewSupervisor("parent supervisor", handler)
+		childSupervisor := NewSupervisor("child supervisor", handler)
 		parentSupervisor.AddChildSupervisor(childSupervisor)
 
 		assert.NotNil(t, parentSupervisor)
@@ -76,13 +76,12 @@ func TestSupervisor_NewSupervisor(t *testing.T) {
 func TestSupervisor_AddNode(t *testing.T) {
 	t.Run("adds a node to the supervisor", func(t *testing.T) {
 		supervisorHandler := supervisorHandler{}
-		supervisor := NewSupervisor(context.Background(), "TestSupervisor", supervisorHandler)
+		supervisor := NewSupervisor("TestSupervisor", supervisorHandler)
 		assert.NotNil(t, supervisor.Nodes)
 
-		ctx := context.Background()
 		nodeHandler := supervisorNodeHandler{}
-		node := NewNode[supervisorNodeTestMessage, supervisorNodeTestMessage](ctx, "TestNode", nodeHandler, nil)
-		supervisor.AddNode(node)
+		node := NewNode[supervisorNodeTestMessage, supervisorNodeTestMessage]("TestNode", nodeHandler, nil)
+		supervisor.addNode(node)
 
 		assert.Contains(t, supervisor.Nodes, "TestNode")
 		assert.Equal(t, supervisor.Events, node.Events)

@@ -34,7 +34,6 @@ type EvtHandler interface {
 }
 
 type Worker struct {
-	ctx       context.Context
 	name      string
 	listening MessageCarrier // Each worker listens to a specific channel
 	handler   EnvHandler
@@ -65,43 +64,45 @@ type EnvelopeWorker interface { // Node
 	AddWorkers(MessageCarrier, int, string, EnvHandler)
 	GetHandler() EnvHandler
 	SetEvents(MessageCarrier)
-	Start()
+	Start(context.Context)
 	RestartWorkers()
 	Stop(*Event)
 }
 
 type Node[In, Out Message] struct {
-	ctx             context.Context
-	cancel          context.CancelFunc
 	name            string
 	Handler         EnvHandler
 	LoopbackHandler EnvHandler
 	WorkerPool      map[string][]*Worker // Updated to map channels to workers
 	WorkerCounter   uint64
+	RunningWorkers  int64
 
 	In     map[string]MessageCarrier
 	Out    OutMux
 	Events MessageCarrier
+
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 type EventWorker interface { // Supervisor
 	Name() string
 	AddChildSupervisor(EventWorker)
-	AddNode(EnvelopeWorker)
 	SetEvents(MessageCarrier)
-	Start()
+	Start(ctx context.Context)
 	Stop()
 }
 
 type Supervisor struct {
-	ctx          context.Context
-	cancel       context.CancelFunc
 	name         string
 	Events       MessageCarrier
 	ParentEvents MessageCarrier
 	Supervisors  map[string]EventWorker
 	Nodes        map[string]EnvelopeWorker
 	Handler      EvtHandler
+
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 type Config struct {
@@ -109,12 +110,12 @@ type Config struct {
 }
 
 type Graph struct {
-	ctx         context.Context
-	cancel      context.CancelFunc
 	Name        string
 	Supervisors map[string]EventWorker
 	Nodes       map[string]EnvelopeWorker
 	Edges       []MessageCarrier
 
-	done chan struct{}
+	ctx    context.Context
+	cancel context.CancelFunc
+	done   chan struct{}
 }

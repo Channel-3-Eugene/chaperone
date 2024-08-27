@@ -63,20 +63,20 @@ func TestChaperone_EndToEnd(t *testing.T) {
 	ctx := context.Background()
 
 	ParentSupervisorName := "parent supervisor"
-	ParentSupervisor := NewSupervisor(ctx, ParentSupervisorName, &testSupervisorHandler{})
+	ParentSupervisor := NewSupervisor(ParentSupervisorName, &testSupervisorHandler{})
 	superDuperSuperEdge := NewEdge("superDuperSuper", nil, nil, 10, 1)
 	ParentSupervisor.ParentEvents = superDuperSuperEdge
 	ChildSupervisorName := "child supervisor"
-	ChildSupervisor := NewSupervisor(ctx, ChildSupervisorName, &testSupervisorHandler{})
+	ChildSupervisor := NewSupervisor(ChildSupervisorName, &testSupervisorHandler{})
 	Node1Name := "node1"
-	Node1 := NewNode[testMessage, testMessage](ctx, Node1Name, &testHandler{}, nil)
+	Node1 := NewNode[testMessage, testMessage](Node1Name, &testHandler{}, nil)
 	startEdge := NewEdge("start", nil, Node1, 10, 1)
 	Node2Name := "node2"
-	Node2 := NewNode[testMessage, testMessage](ctx, Node2Name, &testHandler{}, nil)
+	Node2 := NewNode[testMessage, testMessage](Node2Name, &testHandler{}, nil)
 	middleEdge := NewEdge("middle", Node1, Node2, 10, 1)
 	endEdge := NewEdge("end", Node2, nil, 10, 1)
 
-	graph := NewGraph(ctx, "graph", &Config{}).
+	graph := NewGraph("graph", &Config{}).
 		AddSupervisor(nil, ParentSupervisor).
 		AddSupervisor(ParentSupervisor, ChildSupervisor).
 		AddEdge(startEdge).
@@ -84,7 +84,7 @@ func TestChaperone_EndToEnd(t *testing.T) {
 		AddEdge(middleEdge).
 		AddNode(ChildSupervisor, Node2).
 		AddEdge(endEdge).
-		Start()
+		Start(ctx)
 
 	t.Run("Sends a valid message all the way through the graph", func(t *testing.T) {
 		assert.Equal(t, startEdge.GetChannel(), Node1.In["start"].GetChannel())

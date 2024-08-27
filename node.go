@@ -7,11 +7,8 @@ import (
 	"sync/atomic"
 )
 
-func NewNode[In, Out Message](ctx context.Context, name string, handler, lbHandler EnvHandler) *Node[In, Out] {
-	c, cancel := context.WithCancel(ctx)
+func NewNode[In, Out Message](name string, handler, lbHandler EnvHandler) *Node[In, Out] {
 	n := &Node[In, Out]{
-		ctx:             c,
-		cancel:          cancel,
 		name:            name,
 		Handler:         handler,
 		LoopbackHandler: lbHandler,
@@ -55,7 +52,6 @@ func (n *Node[In, Out]) AddWorkers(edge MessageCarrier, num int, name string, ha
 		worker := &Worker{
 			name:      fmt.Sprintf("%s-%d", name, numWorker),
 			handler:   handler,
-			ctx:       n.ctx,
 			listening: edge, // Associate worker with the specific channel
 		}
 		n.WorkerPool[edge.Name()] = append(n.WorkerPool[edge.Name()], worker)
@@ -74,21 +70,28 @@ func (n *Node[In, Out]) AddOutput(edge MessageCarrier) {
 	n.Out.AddChannel(edge)
 }
 
-func (n *Node[In, Out]) Start() {
-	if len(n.WorkerPool) == 0 {
-		// start the node handler
-		n.Handler.Start(n.ctx)
-	} else {
-		// start the worker handlers in their goroutines
-		for _, workers := range n.WorkerPool {
-			for _, worker := range workers {
-				go n.startWorker(worker)
-			}
+func (n *Node[In, Out]) Start(ctx context.Context) {
+	ctx, cancel := context.WithCancel(ctx)
+	n.ctx = ctx
+	n.cancel = cancel
+
+	// start the node handler
+	n.Handler.Start(ctx)
+
+	// start the worker handlers in their goroutines
+	for _, workers := range n.WorkerPool {
+		for _, worker := range workers {
+			go n.startWorker(ctx, worker)
 		}
 	}
 }
 
-func (n *Node[In, Out]) startWorker(w *Worker) {
+func (n *Node[In, Out]) startWorker(ctx context.Context, w *Worker) {
+	atomic.AddInt64(&n.RunningWorkers, 1)
+	defer func() {
+		atomic.AddInt64(&n.RunningWorkers, -1)
+	}()
+
 	defer func() {
 		if r := recover(); r != nil {
 			switch x := r.(type) {
@@ -105,7 +108,7 @@ func (n *Node[In, Out]) startWorker(w *Worker) {
 		}
 	}()
 
-	evt := w.handler.Start(w.ctx)
+	evt := w.handler.Start(ctx)
 
 	if evt != nil {
 		if e, ok := evt.(*Event); ok {
@@ -121,7 +124,7 @@ func (n *Node[In, Out]) startWorker(w *Worker) {
 	if len(n.In) > 1 {
 		for {
 			select {
-			case <-w.ctx.Done():
+			case <-ctx.Done():
 				return
 			case env, ok := <-w.listening.GetChannel():
 				if !ok {
@@ -130,7 +133,7 @@ func (n *Node[In, Out]) startWorker(w *Worker) {
 					return
 				}
 
-				newEnv, err := w.handler.Handle(n.ctx, env)
+				newEnv, err := w.handler.Handle(ctx, env)
 
 				if err != nil {
 					if evt, ok := err.(*Event); ok {
@@ -139,7 +142,7 @@ func (n *Node[In, Out]) startWorker(w *Worker) {
 						n.handleWorkerEvent(w, evt, e)
 					} else {
 						newErr := NewEvent(ErrorLevelError, err, nil)
-						fmt.Printf("Worker %s error: %s\n", w.name, evt.Error())
+						fmt.Printf("Worker %s error: %s\n", w.name, newErr.Error())
 						n.handleWorkerEvent(w, newErr, nil)
 					}
 				} else {
@@ -151,28 +154,34 @@ func (n *Node[In, Out]) startWorker(w *Worker) {
 }
 
 func (n *Node[In, Out]) StopWorkers() {
-	for _, workers := range n.WorkerPool {
-		for _, worker := range workers {
-			worker.ctx.Done()
-		}
-	}
+	// stop the worker handlers
+	n.cancel()
 }
 
 func (n *Node[In, Out]) RestartWorkers() {
 	n.StopWorkers()
-	n.Start()
+	n.Start(n.ctx)
 }
 
 func (n *Node[In, Out]) Stop(evt *Event) {
+	n.SendEvent(evt)
 	n.cancel()
+
+	// any other cleanup?
 }
 
 func (n *Node[In, Out]) Restart(evt *Event) {
 	n.Stop(evt)
-	n.Start()
+	n.Start(n.ctx)
 }
 
-func (n *Node[In, Out]) handleWorkerEvent(_ *Worker, ev *Event, env *Envelope[In]) {
+func (n *Node[In, Out]) SendEvent(evt *Event) {
+	if n.Events != nil {
+		n.Events.Send(evt)
+	}
+}
+
+func (n *Node[In, Out]) handleWorkerEvent(_ *Worker, evt *Event, env *Envelope[In]) {
 	if env != nil {
 		env.NumRetries--
 		if env.NumRetries > 0 {
@@ -180,7 +189,12 @@ func (n *Node[In, Out]) handleWorkerEvent(_ *Worker, ev *Event, env *Envelope[In
 			n.In["loopback"].GetChannel() <- env
 		}
 	}
+
 	// Send event to supervisor
-	fmt.Printf("Node %s event: %s\n", n.Name(), ev.Error())
-	n.Events.GetChannel() <- ev
+	n.SendEvent(evt)
+}
+
+func (n *Node[In, Out]) RunningWorkerCount() int {
+	num := atomic.LoadInt64(&n.RunningWorkers)
+	return int(num)
 }

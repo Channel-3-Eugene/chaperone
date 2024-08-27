@@ -25,7 +25,8 @@ func (h *nodeTestHandler) Start(context.Context) error {
 
 func (h *nodeTestHandler) Handle(_ context.Context, env Message) (Message, error) {
 	if env.String() == "error" {
-		return nil, errors.New("test error")
+		err := errors.New("test error")
+		return nil, err
 	}
 	return env, nil
 }
@@ -51,7 +52,7 @@ func TestNode_NewNode(t *testing.T) {
 	handler := &nodeTestHandler{}
 	lbHandler := &nodeLoopbackTestHandler{}
 
-	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler, lbHandler)
+	node := NewNode[nodeTestMessage, nodeTestMessage]("testNode", handler, lbHandler)
 
 	assert.NotNil(t, node)
 	assert.Equal(t, "testNode", node.Name())
@@ -63,7 +64,7 @@ func TestNode_NewNode(t *testing.T) {
 func TestNode_AddWorkers(t *testing.T) {
 	handler := &nodeTestHandler{}
 	lbHandler := &nodeLoopbackTestHandler{}
-	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler, lbHandler)
+	node := NewNode[nodeTestMessage, nodeTestMessage]("testNode", handler, lbHandler)
 
 	inEdge := NewEdge("test", nil, node, 10, 2)
 
@@ -80,40 +81,39 @@ func TestNode_AddWorkers(t *testing.T) {
 func TestNode_StartStop(t *testing.T) {
 	handler := &nodeTestHandler{}
 	lbHandler := &nodeLoopbackTestHandler{}
-	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler, lbHandler)
+	node := NewNode[nodeTestMessage, nodeTestMessage]("testNode", handler, lbHandler)
 
 	inEdge := NewEdge("test", nil, node, 10, 1)
 	node.AddInput(inEdge)
 	node.AddWorkers(inEdge, 1, "worker", handler)
-	node.Start()
+	node.Start(context.Background())
 
 	// Give some time for the worker to start
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 
 	// Check if worker is running
-	assert.NotNil(t, node.WorkerPool["test"][0].ctx.Done())
+	assert.Greater(t, node.RunningWorkerCount(), 0, "at least one worker should be running")
 
 	// Stop the node
 	evt := NewEvent(ErrorLevelError, errors.New("test error"), nil)
 	node.Stop(evt)
 
 	// Give some time for the worker to stop
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 
 	// Check if context is done
-	assert.NotNil(t, node.WorkerPool["test"][0].ctx.Err())
-	assert.Equal(t, context.Canceled, node.WorkerPool["test"][0].ctx.Err())
+	assert.Equal(t, 0, node.RunningWorkerCount(), "all workers should have stopped")
 }
 
 func TestNode_WorkerHandlesMessage(t *testing.T) {
 	handler := &nodeTestHandler{}
-	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler, nil)
+	node := NewNode[nodeTestMessage, nodeTestMessage]("testNode", handler, nil)
 
 	inEdge := NewEdge("inEdge", nil, node, 10, 1)
 	NewEdge("outEdge", node, nil, 10, 1)
 
 	node.AddWorkers(inEdge, 1, "worker", handler)
-	node.Start()
+	node.Start(context.Background())
 
 	// Send a message to the input channel
 	msg := nodeTestMessage{Content: "TestNode_WorkerHandlesMessage"}
@@ -121,7 +121,7 @@ func TestNode_WorkerHandlesMessage(t *testing.T) {
 	inEdge.Send(env)
 
 	// Give some time for the worker to process the message
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 
 	// Check if the message was sent to the output channel
 	received := <-node.Out.GoChans["outEdge"].GetChannel()
@@ -130,7 +130,7 @@ func TestNode_WorkerHandlesMessage(t *testing.T) {
 
 func TestNode_WorkerHandlesError(t *testing.T) {
 	handler := &nodeTestHandler{}
-	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler, nil)
+	node := NewNode[nodeTestMessage, nodeTestMessage]("testNode", handler, nil)
 
 	inEdge := NewEdge("test input", nil, node, 10, 1)
 	node.AddInput(inEdge)
@@ -138,7 +138,7 @@ func TestNode_WorkerHandlesError(t *testing.T) {
 	node.Events = NewEdge("test events", nil, nil, 10, 1)
 
 	node.AddWorkers(inEdge, 1, "worker", handler)
-	node.Start()
+	node.Start(context.Background())
 
 	// Send a message that will cause an error
 	msg := nodeTestMessage{Content: "error"}
@@ -146,7 +146,7 @@ func TestNode_WorkerHandlesError(t *testing.T) {
 	inEdge.GetChannel() <- env
 
 	// Give some time for the worker to process the message
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 
 	// Check if an event was sent to the event channel
 	evt := <-node.Events.GetChannel()
@@ -158,14 +158,14 @@ func TestNode_WorkerHandlesError(t *testing.T) {
 
 func TestNode_RestartWorkers(t *testing.T) {
 	handler := &nodeTestHandler{}
-	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler, nil)
+	node := NewNode[nodeTestMessage, nodeTestMessage]("testNode", handler, nil)
 
 	inEdge := NewEdge("input", nil, node, 10, 2)
 
-	node.Start()
+	node.Start(context.Background())
 
 	// Give some time for the workers to start
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 
 	// Verify initial workers are running
 	assert.Len(t, node.WorkerPool[inEdge.Name()], 2)
@@ -174,7 +174,7 @@ func TestNode_RestartWorkers(t *testing.T) {
 	node.RestartWorkers()
 
 	// Give some time for the workers to restart
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
 
 	// Verify workers have been restarted
 	assert.Len(t, node.WorkerPool[inEdge.Name()], 2)
@@ -184,10 +184,10 @@ func TestNode_RestartWorkers(t *testing.T) {
 
 func TestNode_NoAdditionalInputChannels(t *testing.T) {
 	handler := &nodeTestHandler{}
-	node := NewNode[nodeTestMessage, nodeTestMessage](context.Background(), "testNode", handler, handler)
+	node := NewNode[nodeTestMessage, nodeTestMessage]("testNode", handler, handler)
 
 	// Start the node without additional input channels
-	node.Start()
+	node.Start(context.Background())
 
 	// Give some time for the worker to start
 	time.Sleep(10 * time.Millisecond)

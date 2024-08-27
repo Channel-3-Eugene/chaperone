@@ -6,11 +6,8 @@ import (
 	"runtime"
 )
 
-func NewSupervisor(ctx context.Context, name string, handler EvtHandler) *Supervisor {
-	c, cancel := context.WithCancel(ctx)
+func NewSupervisor(name string, handler EvtHandler) *Supervisor {
 	return &Supervisor{
-		ctx:         c,
-		cancel:      cancel,
 		name:        name,
 		Supervisors: make(map[string]EventWorker),
 		Nodes:       make(map[string]EnvelopeWorker),
@@ -35,12 +32,16 @@ func (s *Supervisor) SetEvents(edge MessageCarrier) {
 	s.ParentEvents = e
 }
 
-func (s *Supervisor) AddNode(node EnvelopeWorker) {
+func (s *Supervisor) addNode(node EnvelopeWorker) {
 	s.Nodes[node.Name()] = node
 	node.SetEvents(s.Events)
 }
 
-func (s *Supervisor) Start() {
+func (s *Supervisor) Start(ctx context.Context) {
+	ctx, cancel := context.WithCancel(ctx)
+	s.ctx = ctx
+	s.cancel = cancel
+
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -58,7 +59,7 @@ func (s *Supervisor) Start() {
 			}
 		}()
 
-		evt := s.Handler.Start(s.ctx)
+		evt := s.Handler.Start(ctx)
 		if evt != nil {
 			if e, ok := evt.(*Event); ok {
 				s.handleSupervisorEvent(e)
@@ -84,7 +85,7 @@ func (s *Supervisor) Start() {
 				default:
 					s.handleSupervisorEvent(event)
 				}
-			case <-s.ctx.Done():
+			case <-ctx.Done():
 				return
 			}
 		}
@@ -92,12 +93,12 @@ func (s *Supervisor) Start() {
 
 	// Start all the supervisors
 	for _, supervisor := range s.Supervisors {
-		go supervisor.Start()
+		go supervisor.Start(ctx)
 	}
 
 	// Start all the nodes
 	for _, node := range s.Nodes {
-		go node.Start()
+		go node.Start(ctx)
 	}
 }
 
