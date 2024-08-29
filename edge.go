@@ -35,6 +35,11 @@ func (e *Edge) SetChannel(c chan Message) {
 }
 
 func (e *Edge) Send(env Message) error {
+	if e.channel == nil {
+		return fmt.Errorf("channel is nil")
+	}
+
 	e.channel <- env
+
 	return nil
 }

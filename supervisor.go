@@ -102,29 +102,29 @@ func (s *Supervisor) Start(ctx context.Context) {
 	}
 }
 
-func (s *Supervisor) handleSupervisorEvent(ev *Event) {
-	if ev.Level() >= ErrorLevelError && s.ParentEvents != nil {
-		s.ParentEvents.GetChannel() <- ev
+func (s *Supervisor) handleSupervisorEvent(evt *Event) {
+	if evt.Level() >= ErrorLevelError && s.ParentEvents != nil {
+		s.ParentEvents.Send(evt)
 	}
-	if ev.Level() == ErrorLevelCritical {
+	if evt.Level() == ErrorLevelCritical {
 		fmt.Println("Critical error encountered, restarting node workers.")
-		ev.node.RestartWorkers()
+		evt.node.RestartWorkers()
 	}
 }
 
 func (s *Supervisor) Stop() {
-	ev := NewEvent(ErrorLevelInfo, fmt.Errorf("stopping supervisor %s", s.Name()), nil)
+	evt := NewEvent(ErrorLevelInfo, fmt.Errorf("stopping supervisor %s", s.Name()), nil)
 
 	for _, supervisor := range s.Supervisors {
 		supervisor.Stop()
 	}
 
 	for _, node := range s.Nodes {
-		node.Stop(ev)
+		node.Stop(evt)
 	}
 
 	if s.ParentEvents != nil {
-		s.ParentEvents.GetChannel() <- ev
+		s.ParentEvents.Send(evt)
 		close(s.ParentEvents.GetChannel())
 	}
 
