@@ -76,13 +76,16 @@ func (n *Node[In, Out]) Start(ctx context.Context) {
 	n.cancel = cancel
 
 	// start the node handler
-	n.Handler.Start(ctx)
 
 	// start the worker handlers in their goroutines
-	for _, workers := range n.WorkerPool {
-		for _, worker := range workers {
-			go n.startWorker(ctx, worker)
+	if len(n.WorkerPool) > 0 {
+		for _, workers := range n.WorkerPool {
+			for _, worker := range workers {
+				go n.startWorker(ctx, worker)
+			}
 		}
+	} else {
+		n.Handler.Start(ctx)
 	}
 }
 
