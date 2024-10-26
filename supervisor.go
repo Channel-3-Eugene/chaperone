@@ -86,6 +86,8 @@ func (s *Supervisor) Start(ctx context.Context) {
 					s.handleSupervisorEvent(event)
 				}
 			case <-ctx.Done():
+				fmt.Printf("Supervisor %s context canceled\n", s.Name())
+
 				return
 			}
 		}
@@ -108,7 +110,7 @@ func (s *Supervisor) handleSupervisorEvent(evt *Event) {
 	}
 	if evt.Level() == ErrorLevelCritical {
 		fmt.Println("Critical error encountered, restarting node workers.")
-		evt.node.RestartWorkers()
+		evt.node.RestartWorkers(context.Background())
 	}
 }
 
@@ -125,8 +127,9 @@ func (s *Supervisor) Stop() {
 
 	if s.ParentEvents != nil {
 		s.ParentEvents.Send(evt)
-		close(s.ParentEvents.GetChannel())
 	}
 
 	s.cancel()
+
+	s.Handler.Stop()
 }

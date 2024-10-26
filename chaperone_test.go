@@ -45,6 +45,8 @@ func (h *testSupervisorHandler) Handle(ctx context.Context, evt Message) error {
 	return nil
 }
 
+func (h *testSupervisorHandler) Stop() {}
+
 func randomString(n int) (string, error) {
 	const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 	b := make([]byte, n)

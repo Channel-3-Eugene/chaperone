@@ -2,6 +2,7 @@ package chaperone
 
 import (
 	"context"
+	"sync"
 )
 
 type Message interface { // Envelope or Payload
@@ -31,6 +32,7 @@ type EnvHandler interface {
 type EvtHandler interface {
 	Start(ctx context.Context) error
 	Handle(ctx context.Context, evt Message) error
+	Stop()
 }
 
 type Worker struct {
@@ -65,7 +67,7 @@ type EnvelopeWorker interface { // Node
 	GetHandler() EnvHandler
 	SetEvents(MessageCarrier)
 	Start(context.Context)
-	RestartWorkers()
+	RestartWorkers(context.Context)
 	Stop(*Event)
 }
 
@@ -83,6 +85,8 @@ type Node[In, Out Message] struct {
 
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	once sync.Once
 }
 
 type EventWorker interface { // Supervisor

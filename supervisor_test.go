@@ -52,6 +52,8 @@ func (h supervisorHandler) Handle(ctx context.Context, evt Message) error {
 	return nil
 }
 
+func (h supervisorHandler) Stop() {}
+
 func TestSupervisor_NewSupervisor(t *testing.T) {
 	t.Run("creates a new supervisor with the given name", func(t *testing.T) {
 		handler := supervisorHandler{}

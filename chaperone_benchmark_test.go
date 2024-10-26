@@ -52,6 +52,8 @@ func (h *benchmarkSupervisorHandler) Handle(_ context.Context, _ Message) error 
 	return nil
 }
 
+func (h *benchmarkSupervisorHandler) Stop() {}
+
 func BenchmarkGraph(b *testing.B) {
 	ctx := context.Background()
 

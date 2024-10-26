@@ -3,6 +3,7 @@ package chaperone
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -85,11 +86,15 @@ func TestNode_StartStop(t *testing.T) {
 
 	inEdge := NewEdge("test", nil, node, 10, 1)
 	node.AddInput(inEdge)
-	node.AddWorkers(inEdge, 1, "worker", handler)
-	node.Start(context.Background())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	fmt.Printf("Test context address: %p\n", ctx)
+	node.Start(ctx)
 
 	// Give some time for the worker to start
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(1 * time.Millisecond)
 
 	// Check if worker is running
 	assert.Greater(t, node.RunningWorkerCount(), 0, "at least one worker should be running")
@@ -99,7 +104,7 @@ func TestNode_StartStop(t *testing.T) {
 	node.Stop(evt)
 
 	// Give some time for the worker to stop
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 
 	// Check if context is done
 	assert.Equal(t, 0, node.RunningWorkerCount(), "all workers should have stopped")
@@ -171,7 +176,7 @@ func TestNode_RestartWorkers(t *testing.T) {
 	assert.Len(t, node.WorkerPool[inEdge.Name()], 2)
 
 	// Restart workers
-	node.RestartWorkers()
+	node.RestartWorkers(context.Background())
 
 	// Give some time for the workers to restart
 	time.Sleep(10 * time.Millisecond)

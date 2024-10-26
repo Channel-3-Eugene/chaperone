@@ -71,18 +71,22 @@ func (n *Node[In, Out]) AddOutput(edge MessageCarrier) {
 }
 
 func (n *Node[In, Out]) Start(ctx context.Context) {
-	ctx, cancel := context.WithCancel(ctx)
-	n.ctx = ctx
-	n.cancel = cancel
-
-	// start the node handler
-	n.Handler.Start(ctx)
+	n.once.Do(func() {
+		ctx, cancel := context.WithCancel(ctx)
+		n.cancel = cancel
+		n.ctx = ctx
+	})
 
 	// start the worker handlers in their goroutines
-	for _, workers := range n.WorkerPool {
-		for _, worker := range workers {
-			go n.startWorker(ctx, worker)
+	if len(n.WorkerPool) > 0 {
+		for _, workers := range n.WorkerPool {
+			for _, worker := range workers {
+				go n.startWorker(n.ctx, worker)
+			}
 		}
+	} else {
+		// start the node handler
+		n.Handler.Start(ctx)
 	}
 }
 
@@ -112,24 +116,29 @@ func (n *Node[In, Out]) startWorker(ctx context.Context, w *Worker) {
 
 	if evt != nil {
 		if e, ok := evt.(*Event); ok {
-			fmt.Printf("Worker %s error: %s\n", w.name, evt.Error())
 			n.handleWorkerEvent(w, e, nil)
 		} else {
 			newErr := NewEvent(ErrorLevelError, fmt.Errorf("worker %s returned invalid event", w.name), nil)
-			fmt.Printf("Worker %s error: %s\n", w.name, newErr.Error())
 			n.handleWorkerEvent(w, newErr, nil)
 		}
 	}
 
+	ellipse := 0
 	if len(n.In) > 1 {
 		for {
+			fmt.Print(".")
+			ellipse++
+			if ellipse == 2 {
+				fmt.Print("\r")
+				ellipse = 0
+			}
+
 			select {
 			case <-ctx.Done():
 				return
 			case env, ok := <-w.listening.GetChannel():
 				if !ok {
 					// Channel closed
-					fmt.Printf("Worker %s channel closed\n", w.name)
 					return
 				}
 
@@ -158,14 +167,27 @@ func (n *Node[In, Out]) StopWorkers() {
 	n.cancel()
 }
 
-func (n *Node[In, Out]) RestartWorkers() {
+func (n *Node[In, Out]) RestartWorkers(ctx context.Context) {
 	n.StopWorkers()
+	ctx, cancel := context.WithCancel(ctx)
+	n.ctx = ctx
+	n.cancel = cancel
 	n.Start(n.ctx)
 }
 
 func (n *Node[In, Out]) Stop(evt *Event) {
-	n.SendEvent(evt)
-	n.cancel()
+
+	if evt != nil {
+		n.SendEvent(evt)
+	}
+	select {
+	case <-n.ctx.Done():
+		// Context is already canceled, do nothing
+		return
+	default:
+		// Cancel the context
+		n.StopWorkers()
+	}
 
 	// any other cleanup?
 }

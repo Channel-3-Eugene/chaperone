@@ -41,6 +41,8 @@ func (h *graphSupervisorTestHandler) Handle(_ context.Context, evt Message) erro
 	return nil
 }
 
+func (h *graphSupervisorTestHandler) Stop() {}
+
 func TestGraph_NewGraph(t *testing.T) {
 	t.Run("creates a new graph with the given context", func(t *testing.T) {
 		graph := NewGraph("graph", &Config{})

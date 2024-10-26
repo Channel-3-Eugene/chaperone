@@ -1,5 +1,7 @@
 package chaperone
 
+import "fmt"
+
 func NewOutMux(name string) OutMux {
 	return OutMux{
 		Name:     name,
@@ -14,6 +16,7 @@ func (o *OutMux) AddChannel(edge MessageCarrier) {
 	goChan := edge.(*Edge)
 
 	go func(in, out chan Message) {
+		fmt.Printf("OutMux %s starting\n", o.Name)
 		for env := range in {
 			out <- env // Send the envelope to the output channel.
 		}
