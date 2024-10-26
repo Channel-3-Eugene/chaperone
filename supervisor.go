@@ -72,6 +72,10 @@ func (s *Supervisor) Start(ctx context.Context) {
 		for {
 			select {
 			case msg := <-s.Events.GetChannel():
+				if msg == nil {
+					continue
+				}
+
 				event, ok := msg.(*Event)
 				if !ok {
 					fmt.Printf("Received unexpected message type: %#v\n", msg)
@@ -125,7 +129,7 @@ func (s *Supervisor) Stop() {
 		node.Stop(evt)
 	}
 
-	if s.ParentEvents != nil {
+	if s.ParentEvents != nil && s.ParentEvents.GetChannel() != nil {
 		s.ParentEvents.Send(evt)
 	}
 
