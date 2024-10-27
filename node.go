@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"runtime"
 	"sync/atomic"
+	"time"
+
+	"github.com/Channel-3-Eugene/chaperone/metrics"
 )
 
 func NewNode[In, Out Message](name string, handler, lbHandler EnvHandler) *Node[In, Out] {
@@ -75,6 +78,8 @@ func (n *Node[In, Out]) Start(ctx context.Context) {
 		ctx, cancel := context.WithCancel(ctx)
 		n.cancel = cancel
 		n.ctx = ctx
+
+		n.metrics = metrics.NewMetrics(100 * time.Millisecond)
 	})
 
 	// start the worker handlers in their goroutines
@@ -88,6 +93,28 @@ func (n *Node[In, Out]) Start(ctx context.Context) {
 		// start the node handler
 		n.Handler.Start(ctx)
 	}
+
+	go func() {
+		var queueDepth uint64
+
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				for _, ch := range n.In {
+					queueDepth += uint64(len(ch.GetChannel()))
+				}
+				if queueDepth > 0 {
+					n.metrics.AddSample(queueDepth)
+					queueDepth = 0
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 }
 
 func (n *Node[In, Out]) startWorker(ctx context.Context, w *Worker) {
@@ -123,16 +150,8 @@ func (n *Node[In, Out]) startWorker(ctx context.Context, w *Worker) {
 		}
 	}
 
-	ellipse := 0
 	if len(n.In) > 1 {
 		for {
-			fmt.Print(".")
-			ellipse++
-			if ellipse == 2 {
-				fmt.Print("\r")
-				ellipse = 0
-			}
-
 			select {
 			case <-ctx.Done():
 				return
@@ -145,6 +164,7 @@ func (n *Node[In, Out]) startWorker(ctx context.Context, w *Worker) {
 				newEnv, err := w.handler.Handle(ctx, env)
 
 				if err != nil {
+					n.metrics.AddError(1)
 					if evt, ok := err.(*Event); ok {
 						e := env.(*Envelope[In])
 						fmt.Printf("Worker %s error: %s\n", w.name, evt.Error())
@@ -156,6 +176,7 @@ func (n *Node[In, Out]) startWorker(ctx context.Context, w *Worker) {
 					}
 				} else {
 					n.Out.Send(newEnv)
+					n.metrics.AddPacket(1)
 				}
 			}
 		}

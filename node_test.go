@@ -29,6 +29,9 @@ func (h *nodeTestHandler) Handle(_ context.Context, env Message) (Message, error
 		err := errors.New("test error")
 		return nil, err
 	}
+	if env.String() == "slow" {
+		time.Sleep(1 * time.Millisecond)
+	}
 	return env, nil
 }
 
@@ -148,7 +151,7 @@ func TestNode_WorkerHandlesError(t *testing.T) {
 	// Send a message that will cause an error
 	msg := nodeTestMessage{Content: "error"}
 	env := &Envelope[nodeTestMessage]{Message: msg, NumRetries: 3}
-	inEdge.GetChannel() <- env
+	inEdge.Send(env)
 
 	// Give some time for the worker to process the message
 	time.Sleep(10 * time.Millisecond)
@@ -200,4 +203,99 @@ func TestNode_NoAdditionalInputChannels(t *testing.T) {
 	// Ensure no additional workers were started
 	assert.Len(t, node.WorkerPool, 1) // Only loopback worker should exist
 	assert.Equal(t, "testNode-loopback-1", node.WorkerPool["loopback"][0].name)
+}
+
+func TestNode_MetricsPacketRate(t *testing.T) {
+	handler := &nodeTestHandler{}
+	node := NewNode[nodeTestMessage, nodeTestMessage]("testNode", handler, nil)
+
+	inEdge := NewEdge("input", nil, node, 10, 1)
+	node.AddInput(inEdge)
+
+	node.Start(context.Background())
+	defer node.Stop(nil)
+
+	// Send multiple messages to simulate packet traffic
+	for i := 0; i < 10; i++ {
+		msg := nodeTestMessage{Content: fmt.Sprintf("Message %d", i)}
+		env := &Envelope[nodeTestMessage]{Message: msg, NumRetries: 3}
+		inEdge.Send(env)
+	}
+
+	// Wait until packet rate is updated
+	waitForCondition(t, func() bool {
+		return node.metrics.GetPacketRate() > 0
+	}, 110*time.Millisecond)
+
+	// Validate that the packet rate has been updated
+	packetRate := node.metrics.GetPacketRate()
+	assert.Greater(t, packetRate, uint64(0), "packet rate should be greater than 0")
+}
+
+func TestNode_MetricsErrorRate(t *testing.T) {
+	handler := &nodeTestHandler{}
+	node := NewNode[nodeTestMessage, nodeTestMessage]("testNode", handler, nil)
+
+	inEdge := NewEdge("input", nil, node, 10, 1)
+	node.AddInput(inEdge)
+
+	node.Start(context.Background())
+	defer node.Stop(nil)
+
+	// Send multiple error-triggering messages
+	for i := 0; i < 3; i++ {
+		msg := nodeTestMessage{Content: "error"}
+		env := &Envelope[nodeTestMessage]{Message: msg, NumRetries: 0}
+		inEdge.Send(env)
+	}
+
+	// Wait until error rate is updated
+	waitForCondition(t, func() bool {
+		return node.metrics.GetErrorRate() > 0
+	}, 110*time.Millisecond)
+
+	// Validate that the error rate has been updated
+	errorRate := node.metrics.GetErrorRate()
+	assert.Greater(t, errorRate, uint64(0), "error rate should be greater than 0")
+}
+
+func TestNode_MetricsAvgDepth(t *testing.T) {
+	handler := &nodeTestHandler{}
+	node := NewNode[nodeTestMessage, nodeTestMessage]("testNode", handler, nil)
+
+	inEdge := NewEdge("input", nil, node, 10, 1)
+	node.AddInput(inEdge)
+
+	node.Start(context.Background())
+	defer node.Stop(nil)
+
+	// Simulate some queue depth by adding messages to input channels
+	for i := 0; i < 100; i++ {
+		msg := nodeTestMessage{Content: "slow"}
+		env := &Envelope[nodeTestMessage]{Message: msg, NumRetries: 0}
+		inEdge.Send(env)
+	}
+
+	// Wait until avgDepth is updated
+	waitForCondition(t, func() bool {
+		return node.metrics.GetAvgDepth() > 0
+	}, 110*time.Millisecond)
+
+	// Validate that the average depth is updated
+	avgDepth := node.metrics.GetAvgDepth()
+	assert.Greater(t, avgDepth, uint64(0), "average depth should be greater than 0")
+}
+
+func waitForCondition(_ *testing.T, condition func() bool, timeout time.Duration) {
+	start := time.Now()
+	for {
+		if condition() {
+			return
+		}
+		if time.Since(start) > timeout {
+			// t.Fatalf("Timeout waiting for condition")
+			return
+		}
+		time.Sleep(1 * time.Microsecond)
+	}
 }

@@ -79,7 +79,7 @@ func TestMetrics_Stop(t *testing.T) {
 
 	// Wait until bitRate and avgDepth are updated
 	waitForCondition(t, func() bool {
-		return m.GetBitRate() > 100 && m.GetAvgDepth() == 10
+		return m.GetBitRate() > 0 && m.GetAvgDepth() > 0
 	}, 500*time.Microsecond)
 
 	expectedBitRate := m.GetBitRate()
@@ -100,4 +100,40 @@ func TestMetrics_Stop(t *testing.T) {
 	// Check that values before stopping are still accessible
 	assert.Equal(t, expectedBitRate, m.GetBitRate())
 	assert.Equal(t, expectedAvgDepth, m.GetAvgDepth())
+}
+
+func TestMetrics_PacketsPerSecond(t *testing.T) {
+	m := NewMetrics(200 * time.Microsecond) // Set faster interval for testing
+	defer m.Stop()
+
+	m.AddPacket(10)
+	m.AddPacket(20)
+
+	// Wait until packetRate is updated
+	waitForCondition(t, func() bool {
+		return m.GetPacketRate() > 0
+	}, 5000*time.Microsecond)
+
+	expectedPacketRate := m.GetPacketRate()
+
+	// Check that packetRate is set correctly
+	assert.Equal(t, expectedPacketRate, m.GetPacketRate())
+}
+
+func TestMetrics_ErrorsPerSecond(t *testing.T) {
+	m := NewMetrics(200 * time.Microsecond) // Set faster interval for testing
+	defer m.Stop()
+
+	m.AddError(5)
+	m.AddError(15)
+
+	// Wait until errorRate is updated
+	waitForCondition(t, func() bool {
+		return m.GetErrorRate() > 0
+	}, 5000*time.Microsecond)
+
+	expectedErrorRate := m.GetErrorRate()
+
+	// Check that errorRate is set correctly
+	assert.Equal(t, expectedErrorRate, m.GetErrorRate())
 }

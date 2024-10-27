@@ -3,6 +3,8 @@ package chaperone
 import (
 	"context"
 	"sync"
+
+	"github.com/Channel-3-Eugene/chaperone/metrics"
 )
 
 type Message interface { // Envelope or Payload
@@ -82,6 +84,8 @@ type Node[In, Out Message] struct {
 	In     map[string]MessageCarrier
 	Out    OutMux
 	Events MessageCarrier
+
+	metrics *metrics.Metrics
 
 	ctx    context.Context
 	cancel context.CancelFunc
