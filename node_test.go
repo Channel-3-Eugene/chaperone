@@ -299,3 +299,34 @@ func waitForCondition(_ *testing.T, condition func() bool, timeout time.Duration
 		time.Sleep(1 * time.Microsecond)
 	}
 }
+
+func TestNode_GetMetrics(t *testing.T) {
+	handler := &nodeTestHandler{}
+	node := NewNode[nodeTestMessage, nodeTestMessage]("testNode", handler, nil)
+
+	inEdge := NewEdge("input", nil, node, 10, 1)
+	node.AddInput(inEdge)
+
+	node.Start(context.Background())
+	defer node.Stop(nil)
+
+	// Simulate some traffic to generate metrics
+	for i := 0; i < 10; i++ {
+		msg := nodeTestMessage{Content: "TestNode_GetMetrics"}
+		env := &Envelope[nodeTestMessage]{Message: msg, NumRetries: 3}
+		inEdge.Send(env)
+	}
+
+	// Wait until metrics are updated
+	waitForCondition(t, func() bool {
+		metrics := node.GetMetrics()
+		return metrics.PacketRate > 0 && metrics.BitRate > 0 && metrics.AvgDepth >= 0
+	}, 110*time.Millisecond)
+
+	// Fetch and validate the metrics
+	metrics := node.GetMetrics()
+	assert.Equal(t, "testNode", metrics.NodeName)
+	assert.Greater(t, metrics.PacketRate, uint64(0), "PacketRate should be greater than 0")
+	assert.GreaterOrEqual(t, metrics.BitRate, uint64(0), "BitRate should be at least 0")
+	assert.GreaterOrEqual(t, metrics.AvgDepth, uint64(0), "AvgDepth should be at least 0")
+}

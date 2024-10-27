@@ -71,6 +71,7 @@ type EnvelopeWorker interface { // Node
 	Start(context.Context)
 	RestartWorkers(context.Context)
 	Stop(*Event)
+	GetMetrics() *Metrics
 }
 
 type Node[In, Out Message] struct {
@@ -90,7 +91,8 @@ type Node[In, Out Message] struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	once sync.Once
+	once  sync.Once
+	mutex sync.Mutex
 }
 
 type EventWorker interface { // Supervisor
@@ -126,4 +128,12 @@ type Graph struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	done   chan struct{}
+}
+
+type Metrics struct {
+	NodeName   string
+	BitRate    uint64 // bits per second
+	PacketRate uint64 // packets per second
+	ErrorRate  uint64 // errors per second
+	AvgDepth   uint64 // packets waiting in queue
 }

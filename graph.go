@@ -2,6 +2,7 @@ package chaperone
 
 import (
 	"context"
+	"slices"
 )
 
 func NewGraph(name string, config *Config) *Graph {
@@ -52,4 +53,19 @@ func (g *Graph) Stop() *Graph {
 	}
 
 	return g
+}
+
+// Metrics returns the metrics for the given nodes
+// If nodes is nil, return metrics for all nodes
+// Case sensitive naming
+func (g *Graph) Metrics(nodes []string) []*Metrics {
+	metrics := make([]*Metrics, 0)
+
+	for _, node := range g.Nodes {
+		if nodes == nil || slices.Contains(nodes, node.Name()) {
+			metrics = append(metrics, node.GetMetrics())
+		}
+	}
+
+	return metrics
 }

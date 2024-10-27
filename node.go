@@ -79,7 +79,9 @@ func (n *Node[In, Out]) Start(ctx context.Context) {
 		n.cancel = cancel
 		n.ctx = ctx
 
+		n.mutex.Lock()
 		n.metrics = metrics.NewMetrics(100 * time.Millisecond)
+		n.mutex.Unlock()
 	})
 
 	// start the worker handlers in their goroutines
@@ -240,4 +242,17 @@ func (n *Node[In, Out]) handleWorkerEvent(_ *Worker, evt *Event, env *Envelope[I
 func (n *Node[In, Out]) RunningWorkerCount() int {
 	num := atomic.LoadInt64(&n.RunningWorkers)
 	return int(num)
+}
+
+func (n *Node[In, Out]) GetMetrics() *Metrics {
+	n.mutex.Lock()
+	defer n.mutex.Unlock()
+
+	return &Metrics{
+		NodeName:   n.name,
+		BitRate:    n.metrics.GetBitRate(),
+		PacketRate: n.metrics.GetPacketRate(),
+		ErrorRate:  n.metrics.GetErrorRate(),
+		AvgDepth:   n.metrics.GetAvgDepth(),
+	}
 }

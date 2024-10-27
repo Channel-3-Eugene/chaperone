@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -168,5 +169,79 @@ func TestGraph_Start(t *testing.T) {
 		assert.NotPanics(t, func() {
 			graph.Start(ctx)
 		})
+	})
+}
+
+func TestGraph_Metrics(t *testing.T) {
+	t.Run("returns metrics for all nodes", func(t *testing.T) {
+		handler := &graphTestHandler{}
+		graph := NewGraph("graph", &Config{})
+
+		supervisor := NewSupervisor("TestSupervisor", &graphSupervisorTestHandler{})
+		node1 := NewNode[graphTestMessage, graphTestMessage]("Node1", handler, nil)
+		node2 := NewNode[graphTestMessage, graphTestMessage]("Node2", handler, nil)
+		node3 := NewNode[graphTestMessage, graphTestMessage]("Node3", handler, nil)
+
+		graph.AddSupervisor(nil, supervisor).
+			AddNode(supervisor, node1).
+			AddNode(supervisor, node2).
+			AddNode(supervisor, node3)
+
+		graph.Start(context.Background())
+
+		// Send some messages to simulate traffic
+		for i := 0; i < 10; i++ {
+			msg := graphTestMessage{Content: "test"}
+			env := &Envelope[graphTestMessage]{Message: msg, NumRetries: 3}
+			node1.In["loopback"].Send(env)
+		}
+
+		// Wait for metrics to update
+		time.Sleep(100 * time.Millisecond)
+
+		// Get metrics for all nodes
+		metrics := graph.Metrics(nil)
+
+		// Verify that metrics are returned for all nodes
+		assert.Len(t, metrics, 3, "should return metrics for all 3 nodes")
+		for _, m := range metrics {
+			assert.Contains(t, []string{"Node1", "Node2", "Node3"}, m.NodeName)
+		}
+	})
+
+	t.Run("returns metrics for a subset of nodes", func(t *testing.T) {
+		handler := &graphTestHandler{}
+		graph := NewGraph("graph", &Config{})
+
+		supervisor := NewSupervisor("TestSupervisor", &graphSupervisorTestHandler{})
+		node1 := NewNode[graphTestMessage, graphTestMessage]("Node1", handler, nil)
+		node2 := NewNode[graphTestMessage, graphTestMessage]("Node2", handler, nil)
+		node3 := NewNode[graphTestMessage, graphTestMessage]("Node3", handler, nil)
+
+		graph.AddSupervisor(nil, supervisor).
+			AddNode(supervisor, node1).
+			AddNode(supervisor, node2).
+			AddNode(supervisor, node3)
+
+		graph.Start(context.Background())
+
+		// Send some messages to simulate traffic
+		for i := 0; i < 10; i++ {
+			msg := graphTestMessage{Content: "test"}
+			env := &Envelope[graphTestMessage]{Message: msg, NumRetries: 3}
+			node1.In["loopback"].Send(env)
+		}
+
+		// Wait for metrics to update
+		time.Sleep(110 * time.Millisecond)
+
+		// Get metrics for Node1 and Node3
+		metrics := graph.Metrics([]string{"Node1", "Node3"})
+
+		// Verify that metrics are returned only for Node1 and Node3
+		assert.Len(t, metrics, 2, "should return metrics for the specified nodes")
+		for _, m := range metrics {
+			assert.Contains(t, []string{"Node1", "Node3"}, m.NodeName)
+		}
 	})
 }
