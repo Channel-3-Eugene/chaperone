@@ -1,8 +1,11 @@
 package chaperone
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
-func NewEdge(name string, fn EnvelopeWorker, tn EnvelopeWorker, bufferSize int, numWorkers int) *Edge {
+func NewEdge(name string, fn EnvelopeWorker, tn EnvelopeWorker, bufferSize int, numWorkers int) MessageCarrier {
 	edge := &Edge{
 		name:    name,
 		channel: make(chan Message, bufferSize),
@@ -42,4 +45,14 @@ func (e *Edge) Send(env Message) error {
 	e.channel <- env
 
 	return nil
+}
+
+func (e *Edge) Close() {
+	// Close gracefully, ensuring it's done only once
+	e.closeOnce.Do(func() {
+		for len(e.channel) > 0 {
+			time.Sleep(100 * time.Microsecond)
+		}
+		close(e.channel)
+	})
 }

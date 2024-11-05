@@ -20,6 +20,8 @@ const (
 	ErrorLevelError
 	// ErrorLevelCritical represents a critical error message.
 	ErrorLevelCritical
+	// Done is a special error level that indicates the end of a process.
+	Done
 )
 
 const DefaultErrorLevel = ErrorLevelInfo

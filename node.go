@@ -134,6 +134,12 @@ func (n *Node[In, Out]) startWorker(ctx context.Context, w *Worker) {
 			case runtime.Error:
 				err := NewEvent(ErrorLevelCritical, fmt.Errorf("worker %s panicked: %#v", w.name, x), nil)
 				n.handleWorkerEvent(w, err, nil)
+			case *Event:
+				if x.Level() == Done {
+					return
+				}
+				err := NewEvent(x.Level(), fmt.Errorf("worker %s panicked", w.name), x.Message())
+				n.handleWorkerEvent(w, err, nil)
 			default:
 				err := NewEvent(ErrorLevelCritical, fmt.Errorf("worker %s panicked: %#v", w.name, x), nil)
 				n.handleWorkerEvent(w, err, nil)

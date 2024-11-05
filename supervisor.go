@@ -37,10 +37,16 @@ func (s *Supervisor) addNode(node EnvelopeWorker) {
 	node.SetEvents(s.Events)
 }
 
+func (s *Supervisor) SetCancel(cancel context.CancelFunc) {
+	s.cancel = cancel
+}
+
 func (s *Supervisor) Start(ctx context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 	s.ctx = ctx
-	s.cancel = cancel
+	if s.cancel == nil {
+		s.cancel = cancel
+	}
 
 	go func() {
 		defer func() {

@@ -18,6 +18,7 @@ func NewGraph(name string, config *Config) *Graph {
 func (g *Graph) AddSupervisor(parent EventWorker, supervisor EventWorker) *Graph {
 	if parent == nil {
 		g.Supervisors[(supervisor).Name()] = supervisor
+		supervisor.SetCancel(g.cancel)
 	} else {
 		parent.AddChildSupervisor(supervisor)
 	}

@@ -48,11 +48,13 @@ type MessageCarrier interface { // Edge
 	Send(env Message) error
 	GetChannel() chan Message
 	SetChannel(chan Message)
+	Close()
 }
 
 type Edge struct {
-	name    string
-	channel chan Message
+	name      string
+	channel   chan Message
+	closeOnce sync.Once
 }
 
 type OutMux struct {
@@ -78,7 +80,7 @@ type Node[In, Out Message] struct {
 	name            string
 	Handler         EnvHandler
 	LoopbackHandler EnvHandler
-	WorkerPool      map[string][]*Worker // Updated to map channels to workers
+	WorkerPool      map[string][]*Worker
 	WorkerCounter   uint64
 	RunningWorkers  int64
 
@@ -99,6 +101,7 @@ type EventWorker interface { // Supervisor
 	Name() string
 	AddChildSupervisor(EventWorker)
 	SetEvents(MessageCarrier)
+	SetCancel(context.CancelFunc)
 	Start(ctx context.Context)
 	Stop()
 }
